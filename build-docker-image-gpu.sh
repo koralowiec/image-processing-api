@@ -1,0 +1,1 @@
+docker build -t tf-gpu-flask -f ./gpu.Dockerfile .

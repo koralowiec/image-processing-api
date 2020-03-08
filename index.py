@@ -29,7 +29,7 @@ import time
 import os
 
 # Print Tensorflow version
-print(tf.__version__)
+print('TensorFlow version: ', tf.__version__)
 
 # Check available GPU devices.
 print("The following GPU devices are available: %s" %
@@ -145,15 +145,8 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
             np.copyto(image, np.array(image_pil))
     return image
 
-
-#Image
-# image_url = "https://farm1.staticflickr.com/4032/4653948754_c0d768086b_o.jpg"
-# image_url = "https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Ficdn7.digitaltrends.com%2Fimage%2Faudi-a8-road-trip-track-drive-0030-1500x1000.jpg&f=1&nofb=1"
-# downloaded_image_path = download_and_resize_image(image_url, 1280, 856)
-
 #Object detection module
 start_time = time.time()
-
 detector = hub.load("/model").signatures['default']
 end_time = time.time()
 print("Loading module time: ", end_time - start_time)
