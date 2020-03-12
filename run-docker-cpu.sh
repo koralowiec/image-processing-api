@@ -11,4 +11,7 @@ target=/model \
 --mount type=bind,\
 source=$current_path/results,\
 target=/src/results \
+--mount type=bind,\
+source=$current_path/upload,\
+target=/src/upload \
 tf-cpu-flask

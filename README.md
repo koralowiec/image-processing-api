@@ -74,6 +74,6 @@ And try running once again
         ![content type](/screens/content-type1.png)
 	2. Add to JSON key url with string value of url with photo:
         ![JSON body](/screens/json-body1.png)
-	3. Send request
+	3. Send request (to http://localhost:5000/upload)
 	4. If everything run correctly (processing will take some time, especially for a few first requests), you will find the photo with drawn bounding boxes in results directory:
         ![result](/screens/result-1.png)

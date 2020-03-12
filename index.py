@@ -70,6 +70,15 @@ def download_and_resize_image(url,
         display_image(pil_image)
     return filename
 
+def format_and_resize_image(data, new_width=256, new_height=256):
+    image_data = BytesIO(data)
+    pil_image = Image.open(image_data)
+    
+    now = time.time()
+    filename = f"./upload/{now}.jpg"
+    pil_image.save(filename, format="JPEG", quality=90)
+    return filename
+    
 
 def draw_bounding_box_on_image(image,
                                ymin,
@@ -200,5 +209,15 @@ def photo():
     url = json['url']
     image_url = url
     downloaded_image_path = download_and_resize_image(image_url, 1280, 856)
+    print('downloaded path ', downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
     return "asd"
+
+@app.route("/upload2", methods=["POST"])
+def test2():
+    r = request
+
+    uploaded_photo_path = format_and_resize_image(r.data, 1280, 720)
+    print('uploaded path ', uploaded_photo_path)
+    run_detector(detector, uploaded_photo_path, True)
+    return "asd2"
