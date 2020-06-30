@@ -35,6 +35,8 @@ print('TensorFlow version: ', tf.__version__)
 print("The following GPU devices are available: %s" %
       tf.test.gpu_device_name())
 
+IMG_HEIGHT = 256
+IMG_WIDTH = 256
 
 # Helper functions for downloading images and for visualization
 def display_image(image):
@@ -154,21 +156,32 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
             np.copyto(image, np.array(image_pil))
     return image
 
+def compute_area(coordinates):
+    ymin, xmin, ymax, xmax = tuple(coordinates)
+    height = ymax - ymin
+    width = xmax - xmin
+    print(coordinates, height, width)
+    return height*width
+
 def filter_by_detection_class_entities(inference_result, entities, min_score=0.1):
     detection_class_entities = np.array([], dtype=object)
     detection_class_names = np.array([], dtype=object)
     detection_boxes =  np.array([[0,0,0,0]])
     detection_scores = np.array([], dtype="float32")
     detection_class_labels = np.array([])
+    detection_area = np.array([])
 
     for i in range(len(inference_result['detection_class_entities'])):
         if inference_result["detection_scores"][i] >= min_score:
             if inference_result["detection_class_entities"][i] in entities:
+                area_percent = compute_area(inference_result["detection_boxes"][i]) * 100
+
                 detection_class_entities = np.append(detection_class_entities, [inference_result["detection_class_entities"][i]])
                 detection_class_names = np.append(detection_class_names, [inference_result["detection_class_names"][i]])
                 detection_boxes = np.vstack([detection_boxes, inference_result["detection_boxes"][i]])
                 detection_scores = np.append(detection_scores, [inference_result["detection_scores"][i]])
                 detection_class_labels = np.append(detection_class_labels, [inference_result["detection_class_labels"][i]]) 
+                detection_area = np.append(detection_area, [area_percent])
 
     detection_boxes = np.delete(detection_boxes, (0), axis=0)
 
@@ -177,11 +190,28 @@ def filter_by_detection_class_entities(inference_result, entities, min_score=0.1
        'detection_class_names': detection_class_names,
        'detection_boxes': detection_boxes,
        'detection_scores': detection_scores,
-       'detection_class_labels': detection_class_labels
+       'detection_class_labels': detection_class_labels,
+       'detection_area': detection_area
     }
 
 def filter_cars(inference_result, min_score=0.1):
     return filter_by_detection_class_entities(inference_result, [b'Car'])
+
+def get_coordinates_and_score_of_the_biggest_area(inference_result, for_class='', threshold=90):
+    max_area = 0
+    index = -1
+
+    for i in range(len(inference_result['detection_area'])):
+        area = inference_result['detection_area'][i]
+        if for_class == '' or for_class == inference_result['detection_class_entities'][i]:
+            if area > max_area and area > threshold:
+                max_area = area
+                index = i
+    
+    if index != -1:
+        return inference_result['detection_boxes'][index], inference_result['detection_scores'][index]
+    
+    return -1, -1
 
 #Object detection module
 start_time = time.time()
@@ -211,6 +241,7 @@ def run_detector(detector, path, save=False):
     print("Inference time: ", end_time - start_time)
 
     cars = filter_cars(result)
+    print(cars)
 
     image_with_boxes = draw_boxes(img.numpy(), cars["detection_boxes"],
                                   cars["detection_class_entities"],
@@ -222,6 +253,17 @@ def run_detector(detector, path, save=False):
         print("Path to save: ", path_to_save)
         image_to_save = Image.fromarray(image_with_boxes)
         image_to_save.save(path_to_save)
+    
+    car_area, car_score = get_coordinates_and_score_of_the_biggest_area(cars, for_class=b'Car')
+    
+    if car_area > -1 and car_score > -1:
+        image_with_the_biggest_area_of_car = draw_boxes(img.numpy(), np.array([car_area]), np.array([b'Car']), np.array([car_score]))
+    
+        if save:
+            path_to_save = f"./results/{now_time}-car.jpg"
+            print("Path to save: ", path_to_save)
+            image_to_save = Image.fromarray(image_with_the_biggest_area_of_car)
+            image_to_save.save(path_to_save)
 
 
 @app.route("/")
@@ -232,7 +274,7 @@ def hello():
 def photo():
     print(request)
     image_url = request.json['url']
-    downloaded_image_path = download_and_resize_image(image_url, 1280, 856)
+    downloaded_image_path = download_and_resize_image(image_url, IMG_WIDTH, IMG_HEIGHT)
     print('downloaded path ', downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
     return "ok"
@@ -241,7 +283,7 @@ def photo():
 def test2():
     r = request
 
-    uploaded_photo_path = format_and_resize_image(r.data, 1280, 720)
+    uploaded_photo_path = format_and_resize_image(r.data, IMG_WIDTH, IMG_HEIGHT)
     print('uploaded path ', uploaded_photo_path)
     run_detector(detector, uploaded_photo_path, True)
     return "asd2"
