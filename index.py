@@ -154,6 +154,35 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
             np.copyto(image, np.array(image_pil))
     return image
 
+def filter_by_detection_class_entities(inference_result, entities, min_score=0.1):
+    detection_class_entities = np.array([], dtype=object)
+    detection_class_names = np.array([], dtype=object)
+    detection_boxes =  np.array([[0,0,0,0]])
+    detection_scores = np.array([], dtype="float32")
+    detection_class_labels = np.array([])
+
+    for i in range(len(inference_result['detection_class_entities'])):
+        if inference_result["detection_scores"][i] >= min_score:
+            if inference_result["detection_class_entities"][i] in entities:
+                detection_class_entities = np.append(detection_class_entities, [inference_result["detection_class_entities"][i]])
+                detection_class_names = np.append(detection_class_names, [inference_result["detection_class_names"][i]])
+                detection_boxes = np.vstack([detection_boxes, inference_result["detection_boxes"][i]])
+                detection_scores = np.append(detection_scores, [inference_result["detection_scores"][i]])
+                detection_class_labels = np.append(detection_class_labels, [inference_result["detection_class_labels"][i]]) 
+
+    detection_boxes = np.delete(detection_boxes, (0), axis=0)
+
+    return {
+       'detection_class_entities': detection_class_entities,
+       'detection_class_names': detection_class_names,
+       'detection_boxes': detection_boxes,
+       'detection_scores': detection_scores,
+       'detection_class_labels': detection_class_labels
+    }
+
+def filter_cars(inference_result, min_score=0.1):
+    return filter_by_detection_class_entities(inference_result, [b'Car'])
+
 #Object detection module
 start_time = time.time()
 detector = hub.load("/model").signatures['default']
@@ -181,13 +210,11 @@ def run_detector(detector, path, save=False):
     print("Found %d objects." % len(result["detection_scores"]))
     print("Inference time: ", end_time - start_time)
 
-    print(result)
+    cars = filter_cars(result)
 
-    image_with_boxes = draw_boxes(img.numpy(), result["detection_boxes"],
-                                  result["detection_class_entities"],
-                                  result["detection_scores"])
-
-    # display_image(image_with_boxes)
+    image_with_boxes = draw_boxes(img.numpy(), cars["detection_boxes"],
+                                  cars["detection_class_entities"],
+                                  cars["detection_scores"])
 
     if save:
         now_time = time.time()
@@ -204,14 +231,11 @@ def hello():
 @app.route("/upload", methods=["POST"])
 def photo():
     print(request)
-    json = request.json
-    print(json)
-    url = json['url']
-    image_url = url
+    image_url = request.json['url']
     downloaded_image_path = download_and_resize_image(image_url, 1280, 856)
     print('downloaded path ', downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
-    return "asd"
+    return "ok"
 
 @app.route("/upload2", methods=["POST"])
 def test2():

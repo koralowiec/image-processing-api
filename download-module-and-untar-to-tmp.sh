@@ -1,3 +1,5 @@
+#!/bin/bash
+
 module_name=openimages_v4__ssd__mobilenet_v2
 module_download_url=https://tfhub.dev/google/openimages_v4/ssd/mobilenet_v2/1?tf-hub-format=compressed
 

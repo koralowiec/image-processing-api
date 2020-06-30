@@ -1,3 +1,5 @@
+#!/bin/bash
+
 chmod +x *.sh
 
 d_flag=false

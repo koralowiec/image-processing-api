@@ -50,6 +50,9 @@ And try running once again
             ```shell
 			./run-docker-gpu.sh
 			```
+		3. Possible troubles:
+			- `E tensorflow/stream_executor/cuda/cuda_dnn.cc:329] Could not create cudnn handle: CUDNN_STATUS_INTERNAL_ERROR`
+			If something like this appears in logs, stop container and start new one.
 3. Run without Docker
 	1. Create and activate virtual environment with virtualenv:
 		```shell
