@@ -24,7 +24,7 @@ The model can be downloaded and untared (to /tmp) with simple script:
 If something like that appears:
 
 ```bash
-./download-module-and-untar-to-tmp.sh
+bash: ./download-module-and-untar-to-tmp.sh: Permission denied
 ```
 
 You need add execution right:
@@ -38,7 +38,7 @@ And try running once again
 
 ## Local development with docker-compose
 
-Nvidia Container Toolkit doesn't work with docker-compose yet ([Github issue](https://github.com/docker/compose/issues/6691)), it's needed to use nvidia-docker [Do you support Docker Compose?](https://github.com/NVIDIA/nvidia-docker/wiki#do-you-support-docker-compose)
+Nvidia Container Toolkit doesn't work with docker-compose yet ([Github issue](https://github.com/docker/compose/issues/6691)), it's needed to use nvidia-docker: [Docker Compose support](https://github.com/NVIDIA/nvidia-docker/wiki#do-you-support-docker-compose)
 
 After installing nvidia-docker, restart a docker service and check if nvidia is shown as runtime:
 
