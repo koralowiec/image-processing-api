@@ -1,12 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
-app = Flask(__name__)
-
-#Source https://colab.research.google.com/github/tensorflow/hub/blob/master/examples/colab/object_detection.ipynb#scrollTo=6cPY9Ou4sWs_
-
-# For running inference on the TF-Hub module.
 import tensorflow as tf
 
+# For running inference on the TF-Hub module.
 import tensorflow_hub as hub
 
 # For downloading the image.
@@ -26,21 +22,23 @@ from PIL import ImageOps
 # For measuring the inference time.
 import time
 
-import os
+
+app = Flask(__name__)
+
+# https://github.com/tensorflow/hub/blob/master/examples/colab/object_detection.ipynb
 
 # Print Tensorflow version
-print('TensorFlow version: ', tf.__version__)
+print("TensorFlow version: ", tf.__version__)
 
 # Check available GPU devices.
-print("The following GPU devices are available: %s" %
-      tf.test.gpu_device_name())
+print("The following GPU devices are available: %s" % tf.test.gpu_device_name())
 
 IMG_HEIGHT = 256
 IMG_WIDTH = 256
 
+
 # Helper functions for downloading images and for visualization
 def display_image(image):
-    fig = plt.figure(figsize=(20, 15))
     plt.grid(False)
     plt.imshow(image)
     plt.show()
@@ -54,17 +52,17 @@ def resize_image(path, new_width=256, new_height=256, display=False):
     return path
 
 
-def download_and_resize_image(url,
-                              new_width=256,
-                              new_height=256,
-                              display=False):
+def download_and_resize_image(
+    url, new_width=256, new_height=256, display=False
+):
     _, filename = tempfile.mkstemp(suffix=".jpg")
     response = urlopen(url)
     image_data = response.read()
     image_data = BytesIO(image_data)
     pil_image = Image.open(image_data)
-    pil_image = ImageOps.fit(pil_image, (new_width, new_height),
-                             Image.ANTIALIAS)
+    pil_image = ImageOps.fit(
+        pil_image, (new_width, new_height), Image.ANTIALIAS
+    )
     pil_image_rgb = pil_image.convert("RGB")
     pil_image_rgb.save(filename, format="JPEG", quality=90)
     print("Image downloaded to %s." % filename)
@@ -72,34 +70,48 @@ def download_and_resize_image(url,
         display_image(pil_image)
     return filename
 
+
 def format_and_resize_image(data, new_width=256, new_height=256):
     image_data = BytesIO(data)
     pil_image = Image.open(image_data)
-    
+
     now = time.time()
     filename = f"./upload/{now}.jpg"
     pil_image.save(filename, format="JPEG", quality=90)
     return filename
-    
 
-def draw_bounding_box_on_image(image,
-                               ymin,
-                               xmin,
-                               ymax,
-                               xmax,
-                               color,
-                               font,
-                               thickness=4,
-                               display_str_list=()):
+
+def draw_bounding_box_on_image(
+    image,
+    ymin,
+    xmin,
+    ymax,
+    xmax,
+    color,
+    font,
+    thickness=4,
+    display_str_list=(),
+):
     """Adds a bounding box to an image."""
     draw = ImageDraw.Draw(image)
     im_width, im_height = image.size
-    (left, right, top, bottom) = (xmin * im_width, xmax * im_width,
-                                  ymin * im_height, ymax * im_height)
-    draw.line([(left, top), (left, bottom), (right, bottom), (right, top),
-               (left, top)],
-              width=thickness,
-              fill=color)
+    (left, right, top, bottom) = (
+        xmin * im_width,
+        xmax * im_width,
+        ymin * im_height,
+        ymax * im_height,
+    )
+    draw.line(
+        [
+            (left, top),
+            (left, bottom),
+            (right, bottom),
+            (right, top),
+            (left, top),
+        ],
+        width=thickness,
+        fill=color,
+    )
 
     # If the total height of the display strings added to the top of the bounding
     # box exceeds the top of the image, stack the strings below the bounding box
@@ -116,13 +128,19 @@ def draw_bounding_box_on_image(image,
     for display_str in display_str_list[::-1]:
         text_width, text_height = font.getsize(display_str)
         margin = np.ceil(0.05 * text_height)
-        draw.rectangle([(left, text_bottom - text_height - 2 * margin),
-                        (left + text_width, text_bottom)],
-                       fill=color)
-        draw.text((left + margin, text_bottom - text_height - margin),
-                  display_str,
-                  fill="black",
-                  font=font)
+        draw.rectangle(
+            [
+                (left, text_bottom - text_height - 2 * margin),
+                (left + text_width, text_bottom),
+            ],
+            fill=color,
+        )
+        draw.text(
+            (left + margin, text_bottom - text_height - margin),
+            display_str,
+            fill="black",
+            font=font,
+        )
         text_bottom -= text_height - 2 * margin
 
 
@@ -133,7 +151,8 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
     try:
         font = ImageFont.truetype(
             "/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Regular.ttf",
-            25)
+            25,
+        )
     except IOError:
         print("Font not found, using default font.")
         font = ImageFont.load_default()
@@ -141,81 +160,114 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
     for i in range(min(boxes.shape[0], max_boxes)):
         if scores[i] >= min_score:
             ymin, xmin, ymax, xmax = tuple(boxes[i])
-            display_str = "{}: {}%".format(class_names[i].decode("ascii"),
-                                           int(100 * scores[i]))
+            display_str = "{}: {}%".format(
+                class_names[i].decode("ascii"), int(100 * scores[i])
+            )
             color = colors[hash(class_names[i]) % len(colors)]
             image_pil = Image.fromarray(np.uint8(image)).convert("RGB")
-            draw_bounding_box_on_image(image_pil,
-                                       ymin,
-                                       xmin,
-                                       ymax,
-                                       xmax,
-                                       color,
-                                       font,
-                                       display_str_list=[display_str])
+            draw_bounding_box_on_image(
+                image_pil,
+                ymin,
+                xmin,
+                ymax,
+                xmax,
+                color,
+                font,
+                display_str_list=[display_str],
+            )
             np.copyto(image, np.array(image_pil))
     return image
+
 
 def compute_area(coordinates):
     ymin, xmin, ymax, xmax = tuple(coordinates)
     height = ymax - ymin
     width = xmax - xmin
     print(coordinates, height, width)
-    return height*width
+    return height * width
 
-def filter_by_detection_class_entities(inference_result, entities, min_score=0.1):
+
+def filter_by_detection_class_entities(
+    inference_result, entities, min_score=0.1
+):
     detection_class_entities = np.array([], dtype=object)
     detection_class_names = np.array([], dtype=object)
-    detection_boxes =  np.array([[0,0,0,0]])
+    detection_boxes = np.array([[0, 0, 0, 0]])
     detection_scores = np.array([], dtype="float32")
     detection_class_labels = np.array([])
     detection_area = np.array([])
 
-    for i in range(len(inference_result['detection_class_entities'])):
+    for i in range(len(inference_result["detection_class_entities"])):
         if inference_result["detection_scores"][i] >= min_score:
             if inference_result["detection_class_entities"][i] in entities:
-                area_percent = compute_area(inference_result["detection_boxes"][i]) * 100
+                area_percent = (
+                    compute_area(inference_result["detection_boxes"][i]) * 100
+                )
 
-                detection_class_entities = np.append(detection_class_entities, [inference_result["detection_class_entities"][i]])
-                detection_class_names = np.append(detection_class_names, [inference_result["detection_class_names"][i]])
-                detection_boxes = np.vstack([detection_boxes, inference_result["detection_boxes"][i]])
-                detection_scores = np.append(detection_scores, [inference_result["detection_scores"][i]])
-                detection_class_labels = np.append(detection_class_labels, [inference_result["detection_class_labels"][i]]) 
+                detection_class_entities = np.append(
+                    detection_class_entities,
+                    [inference_result["detection_class_entities"][i]],
+                )
+                detection_class_names = np.append(
+                    detection_class_names,
+                    [inference_result["detection_class_names"][i]],
+                )
+                detection_boxes = np.vstack(
+                    [detection_boxes, inference_result["detection_boxes"][i]]
+                )
+                detection_scores = np.append(
+                    detection_scores, [inference_result["detection_scores"][i]]
+                )
+                detection_class_labels = np.append(
+                    detection_class_labels,
+                    [inference_result["detection_class_labels"][i]],
+                )
                 detection_area = np.append(detection_area, [area_percent])
 
     detection_boxes = np.delete(detection_boxes, (0), axis=0)
 
     return {
-       'detection_class_entities': detection_class_entities,
-       'detection_class_names': detection_class_names,
-       'detection_boxes': detection_boxes,
-       'detection_scores': detection_scores,
-       'detection_class_labels': detection_class_labels,
-       'detection_area': detection_area
+        "detection_class_entities": detection_class_entities,
+        "detection_class_names": detection_class_names,
+        "detection_boxes": detection_boxes,
+        "detection_scores": detection_scores,
+        "detection_class_labels": detection_class_labels,
+        "detection_area": detection_area,
     }
 
-def filter_cars(inference_result, min_score=0.1):
-    return filter_by_detection_class_entities(inference_result, [b'Car'])
 
-def get_coordinates_and_score_of_the_biggest_area(inference_result, for_class='', threshold=90):
+def filter_cars(inference_result, min_score=0.1):
+    return filter_by_detection_class_entities(inference_result, [b"Car"])
+
+
+def get_coordinates_and_score_of_the_biggest_area(
+    inference_result, for_class="", threshold=90
+):
     max_area = 0
     index = -1
 
-    for i in range(len(inference_result['detection_area'])):
-        area = inference_result['detection_area'][i]
-        if for_class == '' or for_class == inference_result['detection_class_entities'][i]:
+    for i in range(len(inference_result["detection_area"])):
+        area = inference_result["detection_area"][i]
+        if (
+            for_class == ""
+            or for_class == inference_result["detection_class_entities"][i]
+        ):
             if area > max_area and area > threshold:
                 max_area = area
                 index = i
-    
+
     if index != -1:
-        return inference_result['detection_boxes'][index], inference_result['detection_scores'][index]
-    
+        return (
+            inference_result["detection_boxes"][index],
+            inference_result["detection_scores"][index],
+        )
+
     return -1, -1
 
-#Object detection module
+
+# Object detection module
 start_time = time.time()
-detector = hub.load("/model").signatures['default']
+detector = hub.load("/model").signatures["default"]
 end_time = time.time()
 print("Loading module time: ", end_time - start_time)
 
@@ -229,8 +281,9 @@ def load_img(path):
 def run_detector(detector, path, save=False):
     img = load_img(path)
 
-    converted_img = tf.image.convert_image_dtype(img, tf.float32)[tf.newaxis,
-                                                                  ...]
+    converted_img = tf.image.convert_image_dtype(img, tf.float32)[
+        tf.newaxis, ...
+    ]
     start_time = time.time()
     result = detector(converted_img)
     end_time = time.time()
@@ -243,9 +296,12 @@ def run_detector(detector, path, save=False):
     cars = filter_cars(result)
     print(cars)
 
-    image_with_boxes = draw_boxes(img.numpy(), cars["detection_boxes"],
-                                  cars["detection_class_entities"],
-                                  cars["detection_scores"])
+    image_with_boxes = draw_boxes(
+        img.numpy(),
+        cars["detection_boxes"],
+        cars["detection_class_entities"],
+        cars["detection_scores"],
+    )
 
     if save:
         now_time = time.time()
@@ -253,12 +309,19 @@ def run_detector(detector, path, save=False):
         print("Path to save: ", path_to_save)
         image_to_save = Image.fromarray(image_with_boxes)
         image_to_save.save(path_to_save)
-    
-    car_area, car_score = get_coordinates_and_score_of_the_biggest_area(cars, for_class=b'Car')
-    
+
+    car_area, car_score = get_coordinates_and_score_of_the_biggest_area(
+        cars, for_class=b"Car"
+    )
+
     if car_area > -1 and car_score > -1:
-        image_with_the_biggest_area_of_car = draw_boxes(img.numpy(), np.array([car_area]), np.array([b'Car']), np.array([car_score]))
-    
+        image_with_the_biggest_area_of_car = draw_boxes(
+            img.numpy(),
+            np.array([car_area]),
+            np.array([b"Car"]),
+            np.array([car_score]),
+        )
+
         if save:
             path_to_save = f"./results/{now_time}-car.jpg"
             print("Path to save: ", path_to_save)
@@ -270,20 +333,24 @@ def run_detector(detector, path, save=False):
 def hello():
     return "Hello, World!"
 
+
 @app.route("/upload", methods=["POST"])
 def photo():
     print(request)
-    image_url = request.json['url']
-    downloaded_image_path = download_and_resize_image(image_url, IMG_WIDTH, IMG_HEIGHT)
-    print('downloaded path ', downloaded_image_path)
+    image_url = request.json["url"]
+    downloaded_image_path = download_and_resize_image(
+        image_url, IMG_WIDTH, IMG_HEIGHT
+    )
+    print("downloaded path ", downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
     return "ok"
+
 
 @app.route("/upload2", methods=["POST"])
 def test2():
     r = request
 
     uploaded_photo_path = format_and_resize_image(r.data, IMG_WIDTH, IMG_HEIGHT)
-    print('uploaded path ', uploaded_photo_path)
+    print("uploaded path ", uploaded_photo_path)
     run_detector(detector, uploaded_photo_path, True)
     return "asd2"
