@@ -14,3 +14,6 @@ services:
             - ./upload:/src/upload
             - /tmp/openimages_v4__ssd__mobilenet_v2:/model
             - ./index.py:/src/index.py
+        environment:
+            # https://stackoverflow.com/a/51362214
+            - PYTHONUNBUFFERED=1
