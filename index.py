@@ -22,34 +22,28 @@ from PIL import ImageOps
 # For measuring the inference time.
 import time
 
+import os
+import logging as log
+
+debug = os.environ.get("DEBUG")
+log.basicConfig(
+    level=log.DEBUG if debug else log.INFO, format="%(asctime)s - %(message)s"
+)
 
 app = Flask(__name__)
 
 # https://github.com/tensorflow/hub/blob/master/examples/colab/object_detection.ipynb
 
 # Print Tensorflow version
-print("TensorFlow version: ", tf.__version__)
+log.info("TensorFlow version: %s", tf.__version__)
 
 # Check available GPU devices.
-print("The following GPU devices are available: %s" % tf.test.gpu_device_name())
+log.info(
+    "The following GPU devices are available: %s" % tf.test.gpu_device_name()
+)
 
-IMG_HEIGHT = 256
-IMG_WIDTH = 256
-
-
-# Helper functions for downloading images and for visualization
-def display_image(image):
-    plt.grid(False)
-    plt.imshow(image)
-    plt.show()
-
-
-def resize_image(path, new_width=256, new_height=256, display=False):
-    image = Image.open(path)
-    image = ImageOps.fit(image, (new_width, new_height), Image.ANTIALIAS)
-    if display:
-        display_image(image)
-    return path
+IMG_HEIGHT = 720
+IMG_WIDTH = 1080
 
 
 def download_and_resize_image(
@@ -65,7 +59,7 @@ def download_and_resize_image(
     )
     pil_image_rgb = pil_image.convert("RGB")
     pil_image_rgb.save(filename, format="JPEG", quality=90)
-    print("Image downloaded to %s." % filename)
+    log.info("Image downloaded to %s." % filename)
     if display:
         display_image(pil_image)
     return filename
@@ -124,7 +118,7 @@ def draw_bounding_box_on_image(
         text_bottom = top
     else:
         text_bottom = bottom + total_display_str_height
-    # Reverse list and print from bottom to top.
+    # Reverse list and log.info from bottom to top.
     for display_str in display_str_list[::-1]:
         text_width, text_height = font.getsize(display_str)
         margin = np.ceil(0.05 * text_height)
@@ -148,14 +142,7 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
     """Overlay labeled boxes on an image with formatted scores and label names."""
     colors = list(ImageColor.colormap.values())
 
-    try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Regular.ttf",
-            25,
-        )
-    except IOError:
-        print("Font not found, using default font.")
-        font = ImageFont.load_default()
+    font = ImageFont.load_default()
 
     for i in range(min(boxes.shape[0], max_boxes)):
         if scores[i] >= min_score:
@@ -240,7 +227,7 @@ def filter_cars(inference_result, min_score=0.1):
 
 
 def get_coordinates_and_score_of_the_biggest_area(
-    inference_result, for_class="", threshold=40
+    inference_result, for_class="", area_threshold=1
 ):
     max_area = 0
     index = -1
@@ -251,7 +238,7 @@ def get_coordinates_and_score_of_the_biggest_area(
             for_class == ""
             or for_class == inference_result["detection_class_entities"][i]
         ):
-            if area > max_area and area > threshold:
+            if area > max_area and area > area_threshold:
                 max_area = area
                 index = i
 
@@ -268,7 +255,7 @@ def get_coordinates_and_score_of_the_biggest_area(
 start_time = time.time()
 detector = hub.load("/model").signatures["default"]
 end_time = time.time()
-print("Loading module time: ", end_time - start_time)
+log.info("Loading module time: %.2f", end_time - start_time)
 
 
 def load_img(path):
@@ -289,11 +276,11 @@ def run_detector(detector, path, save=False):
 
     result = {key: value.numpy() for key, value in result.items()}
 
-    print("Found %d objects." % len(result["detection_scores"]))
-    print("Inference time: ", end_time - start_time)
+    log.info("Found %d objects.", len(result["detection_scores"]))
+    log.info("Inference time: %.2f", end_time - start_time)
 
     cars = filter_cars(result)
-    print(cars)
+    log.debug(cars)
 
     image_with_boxes = draw_boxes(
         img.numpy(),
@@ -305,7 +292,7 @@ def run_detector(detector, path, save=False):
     if save:
         now_time = time.time()
         path_to_save = f"./results/{now_time}.jpg"
-        print("Path to save: ", path_to_save)
+        log.debug("Path to save: %s", path_to_save)
         image_to_save = Image.fromarray(image_with_boxes)
         image_to_save.save(path_to_save)
 
@@ -321,11 +308,9 @@ def run_detector(detector, path, save=False):
             np.array([car_score]),
         )
 
-        crop_image(img.numpy(), np.array([car_area][0]))
-
         if save:
             path_to_save = f"./results/{now_time}-car.jpg"
-            print("Path to save: ", path_to_save)
+            log.debug("Path to save: %s", path_to_save)
             image_to_save = Image.fromarray(image_with_the_biggest_area_of_car)
             image_to_save.save(path_to_save)
 
@@ -337,21 +322,20 @@ def hello():
 
 @app.route("/upload", methods=["POST"])
 def photo():
-    print(request)
     image_url = request.json["url"]
     downloaded_image_path = download_and_resize_image(
         image_url, IMG_WIDTH, IMG_HEIGHT
     )
-    print("downloaded path ", downloaded_image_path)
+    log.debug("downloaded path: %s", downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
     return "ok"
 
 
 @app.route("/upload2", methods=["POST"])
 def test2():
-    r = request
-
-    uploaded_photo_path = format_and_resize_image(r.data, IMG_WIDTH, IMG_HEIGHT)
-    print("uploaded path ", uploaded_photo_path)
+    uploaded_photo_path = format_and_resize_image(
+        request.data, IMG_WIDTH, IMG_HEIGHT
+    )
+    log.debug("uploaded path: %s", uploaded_photo_path)
     run_detector(detector, uploaded_photo_path, True)
-    return "asd2"
+    return "ok"

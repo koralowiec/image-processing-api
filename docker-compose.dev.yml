@@ -17,3 +17,4 @@ services:
         environment:
             # https://stackoverflow.com/a/51362214
             - PYTHONUNBUFFERED=1
+            - DEBUG=true
