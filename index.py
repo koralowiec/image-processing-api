@@ -6,10 +6,7 @@ import tensorflow as tf
 import tensorflow_hub as hub
 
 # For downloading the image.
-import matplotlib.pyplot as plt
-import tempfile
 from six.moves.urllib.request import urlopen
-from six import BytesIO
 
 # For drawing onto the image.
 import numpy as np
@@ -17,7 +14,6 @@ from PIL import Image
 from PIL import ImageColor
 from PIL import ImageDraw
 from PIL import ImageFont
-from PIL import ImageOps
 
 # For measuring the inference time.
 import time
@@ -46,33 +42,13 @@ IMG_HEIGHT = 720
 IMG_WIDTH = 1080
 
 
-def download_and_resize_image(
-    url, new_width=256, new_height=256, display=False
-):
-    _, filename = tempfile.mkstemp(suffix=".jpg")
+def download_image_from_url_and_save(url, new_width=256, new_height=256):
     response = urlopen(url)
     image_data = response.read()
-    image_data = BytesIO(image_data)
-    pil_image = Image.open(image_data)
-    pil_image = ImageOps.fit(
-        pil_image, (new_width, new_height), Image.ANTIALIAS
-    )
-    pil_image_rgb = pil_image.convert("RGB")
-    pil_image_rgb.save(filename, format="JPEG", quality=90)
-    log.info("Image downloaded to %s." % filename)
-    if display:
-        display_image(pil_image)
-    return filename
-
-
-def format_and_resize_image(data, new_width=256, new_height=256):
-    image_data = BytesIO(data)
-    pil_image = Image.open(image_data)
-
-    now = time.time()
-    filename = f"./upload/{now}.jpg"
-    pil_image.save(filename, format="JPEG", quality=90)
-    return filename
+    directory = "upload"
+    filepath = save_img(image_data, raw=True, directory=directory)
+    log.info("Image downloaded to %s.", filepath)
+    return filepath
 
 
 def draw_bounding_box_on_image(
@@ -264,6 +240,21 @@ def load_img(path):
     return img
 
 
+def save_img(img, raw=False, filename="", directory="./results"):
+    if raw:
+        img = tf.io.decode_jpeg(img, channels=3)
+
+    img_jpeg = tf.io.encode_jpeg(img)
+
+    if not filename:
+        now = time.time()
+        filename = f"{now}"
+
+    filepath = f"./{directory}/{filename}.jpeg"
+    tf.io.write_file(filepath, img_jpeg)
+    return filepath
+
+
 def run_detector(detector, path, save=False):
     img = load_img(path)
 
@@ -280,7 +271,6 @@ def run_detector(detector, path, save=False):
     log.info("Inference time: %.2f", end_time - start_time)
 
     cars = filter_cars(result)
-    log.debug(cars)
 
     image_with_boxes = draw_boxes(
         img.numpy(),
@@ -290,11 +280,8 @@ def run_detector(detector, path, save=False):
     )
 
     if save:
-        now_time = time.time()
-        path_to_save = f"./results/{now_time}.jpg"
-        log.debug("Path to save: %s", path_to_save)
-        image_to_save = Image.fromarray(image_with_boxes)
-        image_to_save.save(path_to_save)
+        img_path = save_img(image_with_boxes)
+        log.debug("Path to img: %s", img_path)
 
     car_area, car_score = get_coordinates_and_score_of_the_biggest_area(
         cars, for_class=b"Car"
@@ -309,10 +296,8 @@ def run_detector(detector, path, save=False):
         )
 
         if save:
-            path_to_save = f"./results/{now_time}-car.jpg"
-            log.debug("Path to save: %s", path_to_save)
-            image_to_save = Image.fromarray(image_with_the_biggest_area_of_car)
-            image_to_save.save(path_to_save)
+            img_path = save_img(image_with_the_biggest_area_of_car)
+            log.debug("Path to img: %s", img_path)
 
 
 @app.route("/")
@@ -323,7 +308,7 @@ def hello():
 @app.route("/upload", methods=["POST"])
 def photo():
     image_url = request.json["url"]
-    downloaded_image_path = download_and_resize_image(
+    downloaded_image_path = download_image_from_url_and_save(
         image_url, IMG_WIDTH, IMG_HEIGHT
     )
     log.debug("downloaded path: %s", downloaded_image_path)
@@ -333,9 +318,7 @@ def photo():
 
 @app.route("/upload2", methods=["POST"])
 def test2():
-    uploaded_photo_path = format_and_resize_image(
-        request.data, IMG_WIDTH, IMG_HEIGHT
-    )
+    uploaded_photo_path = save_img(request.data, raw=True, directory="upload")
     log.debug("uploaded path: %s", uploaded_photo_path)
     run_detector(detector, uploaded_photo_path, True)
     return "ok"
