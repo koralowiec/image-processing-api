@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.0.1-gpu as base
+FROM tensorflow/tensorflow:2.2.0-gpu as base
 
 WORKDIR /src
 
