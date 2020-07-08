@@ -183,7 +183,6 @@ def compute_area(coordinates):
     ymin, xmin, ymax, xmax = tuple(coordinates)
     height = ymax - ymin
     width = xmax - xmin
-    print(coordinates, height, width)
     return height * width
 
 
@@ -241,7 +240,7 @@ def filter_cars(inference_result, min_score=0.1):
 
 
 def get_coordinates_and_score_of_the_biggest_area(
-    inference_result, for_class="", threshold=90
+    inference_result, for_class="", threshold=40
 ):
     max_area = 0
     index = -1
@@ -262,7 +261,7 @@ def get_coordinates_and_score_of_the_biggest_area(
             inference_result["detection_scores"][index],
         )
 
-    return -1, -1
+    return np.array([]), np.array([])
 
 
 # Object detection module
@@ -314,13 +313,15 @@ def run_detector(detector, path, save=False):
         cars, for_class=b"Car"
     )
 
-    if car_area > -1 and car_score > -1:
+    if car_area.size != 0 and car_score.size != 0:
         image_with_the_biggest_area_of_car = draw_boxes(
             img.numpy(),
             np.array([car_area]),
             np.array([b"Car"]),
             np.array([car_score]),
         )
+
+        crop_image(img.numpy(), np.array([car_area][0]))
 
         if save:
             path_to_save = f"./results/{now_time}-car.jpg"
