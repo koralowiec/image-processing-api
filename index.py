@@ -1,19 +1,13 @@
 from flask import Flask, request
 
 import tensorflow as tf
-
-# For running inference on the TF-Hub module.
+import tensorflow_addons as tfa
 import tensorflow_hub as hub
 
 # For downloading the image.
 from six.moves.urllib.request import urlopen
 
-# For drawing onto the image.
 import numpy as np
-from PIL import Image
-from PIL import ImageColor
-from PIL import ImageDraw
-from PIL import ImageFont
 
 # For measuring the inference time.
 import time
@@ -41,8 +35,14 @@ log.info(
 IMG_HEIGHT = 720
 IMG_WIDTH = 1080
 
+# Object detection module
+start_time = time.time()
+detector = hub.load("/model").signatures["default"]
+end_time = time.time()
+log.info("Loading module time: %.2f", end_time - start_time)
 
-def download_image_from_url_and_save(url, new_width=256, new_height=256):
+
+def download_image_from_url_and_save(url):
     response = urlopen(url)
     image_data = response.read()
     directory = "upload"
@@ -51,95 +51,19 @@ def download_image_from_url_and_save(url, new_width=256, new_height=256):
     return filepath
 
 
-def draw_bounding_box_on_image(
-    image,
-    ymin,
-    xmin,
-    ymax,
-    xmax,
-    color,
-    font,
-    thickness=4,
-    display_str_list=(),
-):
-    """Adds a bounding box to an image."""
-    draw = ImageDraw.Draw(image)
-    im_width, im_height = image.size
-    (left, right, top, bottom) = (
-        xmin * im_width,
-        xmax * im_width,
-        ymin * im_height,
-        ymax * im_height,
-    )
-    draw.line(
-        [
-            (left, top),
-            (left, bottom),
-            (right, bottom),
-            (right, top),
-            (left, top),
-        ],
-        width=thickness,
-        fill=color,
-    )
-
-    # If the total height of the display strings added to the top of the bounding
-    # box exceeds the top of the image, stack the strings below the bounding box
-    # instead of above.
-    display_str_heights = [font.getsize(ds)[1] for ds in display_str_list]
-    # Each display_str has a top and bottom margin of 0.05x.
-    total_display_str_height = (1 + 2 * 0.05) * sum(display_str_heights)
-
-    if top > total_display_str_height:
-        text_bottom = top
-    else:
-        text_bottom = bottom + total_display_str_height
-    # Reverse list and log.info from bottom to top.
-    for display_str in display_str_list[::-1]:
-        text_width, text_height = font.getsize(display_str)
-        margin = np.ceil(0.05 * text_height)
-        draw.rectangle(
-            [
-                (left, text_bottom - text_height - 2 * margin),
-                (left + text_width, text_bottom),
-            ],
-            fill=color,
-        )
-        draw.text(
-            (left + margin, text_bottom - text_height - margin),
-            display_str,
-            fill="black",
-            font=font,
-        )
-        text_bottom -= text_height - 2 * margin
-
-
 def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
-    """Overlay labeled boxes on an image with formatted scores and label names."""
-    colors = list(ImageColor.colormap.values())
+    boxes_np = np.reshape(boxes, (-1, boxes.shape[0], boxes.shape[1]))
 
-    font = ImageFont.load_default()
+    colors = np.array([[1.0, 0.5, 0.0], [0.0, 0.0, 1.0]])
+    img_4D = tfa.image.utils.to_4D_image(image)
+    img_4D = tf.image.convert_image_dtype(img_4D, tf.float32)
+    log.debug(img_4D)
 
-    for i in range(min(boxes.shape[0], max_boxes)):
-        if scores[i] >= min_score:
-            ymin, xmin, ymax, xmax = tuple(boxes[i])
-            display_str = "{}: {}%".format(
-                class_names[i].decode("ascii"), int(100 * scores[i])
-            )
-            color = colors[hash(class_names[i]) % len(colors)]
-            image_pil = Image.fromarray(np.uint8(image)).convert("RGB")
-            draw_bounding_box_on_image(
-                image_pil,
-                ymin,
-                xmin,
-                ymax,
-                xmax,
-                color,
-                font,
-                display_str_list=[display_str],
-            )
-            np.copyto(image, np.array(image_pil))
-    return image
+    img_b = tf.image.draw_bounding_boxes(img_4D, boxes_np, colors)
+    img_b = tf.image.convert_image_dtype(img_b, tf.uint8)
+    img_b = tfa.image.utils.from_4D_image(img_b, 3)
+    log.debug(img_b)
+    return img_b
 
 
 def compute_area(coordinates):
@@ -227,20 +151,13 @@ def get_coordinates_and_score_of_the_biggest_area(
     return np.array([]), np.array([])
 
 
-# Object detection module
-start_time = time.time()
-detector = hub.load("/model").signatures["default"]
-end_time = time.time()
-log.info("Loading module time: %.2f", end_time - start_time)
-
-
-def load_img(path):
+def load_img_from_fs(path):
     img = tf.io.read_file(path)
     img = tf.image.decode_jpeg(img, channels=3)
     return img
 
 
-def save_img(img, raw=False, filename="", directory="./results"):
+def save_img(img, raw=False, filename="", directory="results"):
     if raw:
         img = tf.io.decode_jpeg(img, channels=3)
 
@@ -256,7 +173,7 @@ def save_img(img, raw=False, filename="", directory="./results"):
 
 
 def run_detector(detector, path, save=False):
-    img = load_img(path)
+    img = load_img_from_fs(path)
 
     converted_img = tf.image.convert_image_dtype(img, tf.float32)[
         tf.newaxis, ...
@@ -269,11 +186,13 @@ def run_detector(detector, path, save=False):
 
     log.info("Found %d objects.", len(result["detection_scores"]))
     log.info("Inference time: %.2f", end_time - start_time)
+    log.debug(result)
 
     cars = filter_cars(result)
+    log.debug(cars)
 
     image_with_boxes = draw_boxes(
-        img.numpy(),
+        img,
         cars["detection_boxes"],
         cars["detection_class_entities"],
         cars["detection_scores"],
@@ -289,7 +208,7 @@ def run_detector(detector, path, save=False):
 
     if car_area.size != 0 and car_score.size != 0:
         image_with_the_biggest_area_of_car = draw_boxes(
-            img.numpy(),
+            img,
             np.array([car_area]),
             np.array([b"Car"]),
             np.array([car_score]),
@@ -308,9 +227,7 @@ def hello():
 @app.route("/upload", methods=["POST"])
 def photo():
     image_url = request.json["url"]
-    downloaded_image_path = download_image_from_url_and_save(
-        image_url, IMG_WIDTH, IMG_HEIGHT
-    )
+    downloaded_image_path = download_image_from_url_and_save(image_url)
     log.debug("downloaded path: %s", downloaded_image_path)
     run_detector(detector, downloaded_image_path, True)
     return "ok"
@@ -319,6 +236,8 @@ def photo():
 @app.route("/upload2", methods=["POST"])
 def test2():
     uploaded_photo_path = save_img(request.data, raw=True, directory="upload")
+    img = tf.image.decode_jpeg(request.data, channels=3)
+    log.debug(img)
     log.debug("uploaded path: %s", uploaded_photo_path)
     run_detector(detector, uploaded_photo_path, True)
     return "ok"
