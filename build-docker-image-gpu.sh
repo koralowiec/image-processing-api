@@ -1,1 +1,0 @@
-docker build -t tf-gpu-flask:base -f ./gpu.Dockerfile  --target base .

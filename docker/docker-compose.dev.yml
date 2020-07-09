@@ -2,18 +2,18 @@ version: '2.4'
 services:
     api:
         build:
-            context: .
-            dockerfile: gpu.Dockerfile
+            context: ../
+            dockerfile: ./docker/gpu.Dockerfile
             target: dev
         # https://github.com/NVIDIA/nvidia-docker/wiki#do-you-support-docker-compose
         runtime: nvidia
         ports: 
             - "5000:5000"
         volumes:
-            - ./results:/src/results
-            - ./upload:/src/upload
+            - ../results:/src/results
+            - ../upload:/src/upload
             - /tmp/openimages_v4__ssd__mobilenet_v2:/model
-            - ./index.py:/src/index.py
+            - ../code:/src/code
         environment:
             # https://stackoverflow.com/a/51362214
             - PYTHONUNBUFFERED=1

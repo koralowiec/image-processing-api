@@ -1,6 +1,6 @@
 {
     "watch": [
-        "index.py"
+        "code/"
     ],
     "exec": "flask run --host=0.0.0.0",
     "ext": "py"
