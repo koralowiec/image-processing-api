@@ -18,6 +18,7 @@ cd flask-with-tf-hub-module
 The model can be downloaded and untared (to /tmp) with simple script:
 
 ```bash
+cd ./scripts
 ./download-module-and-untar-to-tmp.sh
 ```
 
@@ -60,6 +61,7 @@ docker-compose -f docker-compose.dev.yml up
 1. On CPU
 	1. Build an image:
 		```bash
+		cd ./scripts
 		./build-docker-image-cpu.sh
 		```
 	2. Run a container:
@@ -69,6 +71,7 @@ docker-compose -f docker-compose.dev.yml up
 2. On GPU (needed installed Nvidia driver, [more information](https://www.tensorflow.org/install/docker#gpu_support))
 	1. Build an image:
 		```bash
+		cd ./scripts
 		./build-docker-image-gpu.sh
 		```
 	2. Run a container:
@@ -84,20 +87,20 @@ docker-compose -f docker-compose.dev.yml up
 1. Create and activate virtual environment with virtualenv:
 	```bash
 	virtualenv -p python3 env
-       source ./env/bin/activate
+    source ./env/bin/activate
 	```
 2. Install dependencies:
    	```bash
-       pip install tensorflow==2.0.1
-       pip install -r requirements.txt
+    pip install tensorflow==2.0.1
+    pip install -r requirements.txt
 	```
 3. Manually change line 150 in index.py file with correct path to model (if you used script from the first step it should be: /tmp/openimages_v4__ssd__mobilenet_v2):
    	```python
-      	detector = hub.load("/tmp/openimages_v4__ssd__mobilenet_v2").signatures['default'] 
+    detector = hub.load("/tmp/openimages_v4__ssd__mobilenet_v2").signatures['default'] 
 	```
 4. Run a flask server:
 	```bash
-       FLASK_APP="index.py" flask run --host=0.0.0.0
+	FLASK_APP="index.py" flask run --host=0.0.0.0
 	```
 
 ### Send request (I'm using [Insomnia](https://insomnia.rest/), but Postman or curl should also do their job ;))
