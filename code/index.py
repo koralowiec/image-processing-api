@@ -2,6 +2,7 @@ from flask import Flask, request
 
 import tensorflow as tf
 import tensorflow_addons as tfa
+import tensorflow_io as tfio
 import tensorflow_hub as hub
 
 # For downloading the image.
@@ -11,6 +12,8 @@ import numpy as np
 
 # For measuring the inference time.
 import time
+
+import itertools
 
 import os
 import logging as log
@@ -32,8 +35,6 @@ log.info(
     "The following GPU devices are available: %s" % tf.test.gpu_device_name()
 )
 
-IMG_HEIGHT = 720
-IMG_WIDTH = 1080
 
 # Object detection module
 start_time = time.time()
@@ -51,10 +52,67 @@ def download_image_from_url_and_save(url):
     return filepath
 
 
-def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
+def draw_boxes_with_text(
+    image, boxes, class_names, scores, max_boxes=10, min_score=0.1,
+):
+    img = image
+    class_names_iterator = iter(class_names)
+    scores_iterator = iter(scores)
+    text = ""
+    encoding = "utf-8"
+    colors = np.array(
+        [
+            [1.0, 0.5, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.1, 0.0],
+            [0.0, 0.5, 1.0],
+            [1.0, 0.5, 0.5],
+            [0.0, 1.0, 0.5],
+            [0.0, 0.1, 0.5],
+            [1.0, 0.5, 1.0],
+            [0.5, 0.5, 0.5],
+            [0.2, 0.7, 0.5],
+            [0.5, 0.1, 0.1],
+            [0.2, 0.2, 1.0],
+        ]
+    )
+    color_pool = itertools.cycle(colors)
+
+    box_i = 1
+
+    for box in boxes:
+        score = next(scores_iterator)
+        if score >= min_score and box_i <= max_boxes:
+            class_name = str(next(class_names_iterator), encoding)
+            score = "{:.0f}".format(score * 100)
+            text = f"{class_name} {score}%"
+
+            box = np.array([[box]])
+
+            color = np.array([next(color_pool)])
+            img_4D = tfa.image.utils.to_4D_image(img)
+            img_4D = tf.image.convert_image_dtype(img_4D, tf.float32)
+
+            img_b = tfio.experimental.image.draw_bounding_boxes(
+                img_4D, box, colors=color, texts=[text]
+            )
+            img_b = tf.image.convert_image_dtype(img_b, tf.uint8)
+            img_b = tfa.image.utils.from_4D_image(img_b, 3)
+
+            box_i = box_i + 1
+            img = img_b
+
+    return img
+
+
+def draw_boxes(
+    image, boxes, class_names, scores,
+):
     boxes_np = np.reshape(boxes, (-1, boxes.shape[0], boxes.shape[1]))
 
-    colors = np.array([[1.0, 0.5, 0.0], [0.0, 0.0, 1.0]])
+    colors = np.array(
+        [[1.0, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 0.1, 0.0], [0.0, 0.5, 1.0]]
+    )
     img_4D = tfa.image.utils.to_4D_image(image)
     img_4D = tf.image.convert_image_dtype(img_4D, tf.float32)
     log.debug(img_4D)
@@ -62,7 +120,7 @@ def draw_boxes(image, boxes, class_names, scores, max_boxes=10, min_score=0.1):
     img_b = tf.image.draw_bounding_boxes(img_4D, boxes_np, colors)
     img_b = tf.image.convert_image_dtype(img_b, tf.uint8)
     img_b = tfa.image.utils.from_4D_image(img_b, 3)
-    log.debug(img_b)
+
     return img_b
 
 
@@ -191,11 +249,12 @@ def run_detector(detector, path, save=False):
     cars = filter_cars(result)
     log.debug(cars)
 
-    image_with_boxes = draw_boxes(
+    image_with_boxes = draw_boxes_with_text(
         img,
         cars["detection_boxes"],
         cars["detection_class_entities"],
         cars["detection_scores"],
+        min_score=0.25,
     )
 
     if save:
