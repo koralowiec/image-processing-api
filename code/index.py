@@ -185,18 +185,24 @@ def filter_cars(inference_result, min_score=0.1):
 
 
 def get_coordinates_and_score_of_the_biggest_area(
-    inference_result, for_class="", area_threshold=1
+    inference_result, area_threshold, score_threshold, for_class=""
 ):
     max_area = 0
     index = -1
 
     for i in range(len(inference_result["detection_area"])):
-        area = inference_result["detection_area"][i]
         if (
             for_class == ""
-            or for_class == inference_result["detection_class_entities"][i]
+            or inference_result["detection_class_entities"][i] == for_class
         ):
-            if area > max_area and area > area_threshold:
+            area = inference_result["detection_area"][i]
+            score = inference_result["detection_scores"][i]
+
+            if (
+                area > max_area
+                and area > area_threshold
+                and score >= score_threshold
+            ):
                 max_area = area
                 index = i
 
@@ -230,9 +236,7 @@ def save_img(img, raw=False, filename="", directory="results"):
     return filepath
 
 
-def run_detector(detector, path, save=False):
-    img = load_img_from_fs(path)
-
+def run_detector(detector, img):
     converted_img = tf.image.convert_image_dtype(img, tf.float32)[
         tf.newaxis, ...
     ]
@@ -246,7 +250,30 @@ def run_detector(detector, path, save=False):
     log.info("Inference time: %.2f", end_time - start_time)
     log.debug(result)
 
-    cars = filter_cars(result)
+    return result
+
+
+def crop_img(img, box):
+    img_height = img.shape[0]
+    img_width = img.shape[1]
+
+    ymin, xmin, ymax, xmax = tuple(box)
+    offset_height = int(ymin * img_height)
+    offset_width = int(xmin * img_width)
+    target_height = int((ymax - ymin) * img_height)
+    target_width = int((xmax - xmin) * img_width)
+
+    log.debug("Cropped image")
+    log.debug("Top left (x,y): %d, %d", offset_width, offset_height)
+    log.debug("Height: %d, width: %d", target_height, target_width)
+
+    return tf.image.crop_to_bounding_box(
+        img, offset_height, offset_width, target_height, target_width
+    )
+
+
+def draw_boxes_with_cars(inference_result, img, save=False):
+    cars = filter_cars(inference_result)
     log.debug(cars)
 
     image_with_boxes = draw_boxes_with_text(
@@ -254,28 +281,46 @@ def run_detector(detector, path, save=False):
         cars["detection_boxes"],
         cars["detection_class_entities"],
         cars["detection_scores"],
-        min_score=0.25,
+        min_score=0.1,
+        max_boxes=20,
     )
 
     if save:
         img_path = save_img(image_with_boxes)
         log.debug("Path to img: %s", img_path)
 
+
+def crop_or_draw_box_with_potential_car(
+    inference_result, img, area_threshold=20, score_threshold=0.4
+):
+    cars = filter_cars(inference_result)
     car_area, car_score = get_coordinates_and_score_of_the_biggest_area(
-        cars, for_class=b"Car"
+        cars,
+        for_class=b"Car",
+        area_threshold=area_threshold,
+        score_threshold=score_threshold,
     )
 
     if car_area.size != 0 and car_score.size != 0:
-        image_with_the_biggest_area_of_car = draw_boxes(
+        image_with_potential_car_in_bounding_box = draw_boxes(
             img,
             np.array([car_area]),
             np.array([b"Car"]),
             np.array([car_score]),
         )
 
-        if save:
-            img_path = save_img(image_with_the_biggest_area_of_car)
-            log.debug("Path to img: %s", img_path)
+        cropped_image_with_potential_car = crop_img(img, car_area)
+
+        log.debug("CROPPED")
+        log.debug(cropped_image_with_potential_car)
+
+        return (
+            cropped_image_with_potential_car,
+            image_with_potential_car_in_bounding_box,
+        )
+
+    log.info("Potential car not found")
+    return None, None
 
 
 @app.route("/")
@@ -287,16 +332,24 @@ def hello():
 def photo():
     image_url = request.json["url"]
     downloaded_image_path = download_image_from_url_and_save(image_url)
+    image = load_img_from_fs(downloaded_image_path)
     log.debug("downloaded path: %s", downloaded_image_path)
-    run_detector(detector, downloaded_image_path, True)
+    results = run_detector(detector, image)
+    draw_boxes_with_cars(results, image, True)
+    cropped, drawn = crop_or_draw_box_with_potential_car(results, image, True)
+    save_img(cropped)
+    save_img(drawn)
     return "ok"
 
 
 @app.route("/upload2", methods=["POST"])
-def test2():
+def raw_image():
     uploaded_photo_path = save_img(request.data, raw=True, directory="upload")
     img = tf.image.decode_jpeg(request.data, channels=3)
     log.debug(img)
     log.debug("uploaded path: %s", uploaded_photo_path)
-    run_detector(detector, uploaded_photo_path, True)
+    results = run_detector(detector, img)
+    draw_boxes_with_cars(results, img, True)
+    cropped, _ = crop_or_draw_box_with_potential_car(results, img, True)
+    save_img(cropped)
     return "ok"
