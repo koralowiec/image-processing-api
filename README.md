@@ -51,7 +51,7 @@ docker info | grep Runtimes
 Then to run container with automatic restart after every save in index.py type:
 
 ```bash
-docker-compose -f docker-compose.dev.yml up
+docker-compose -f ./docker/docker-compose.dev.yml up
 ```
 
 ## Running

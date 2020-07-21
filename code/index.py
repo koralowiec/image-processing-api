@@ -37,8 +37,14 @@ log.info(
 
 
 # Object detection module
+module_env = os.environ.get("MODULE")
+log.info("MODULE env: %s", module_env)
+module_path = (
+    "/model_faster_rcnn" if module_env == "FASTER_RCNN" else "/model_ssd"
+)
+log.info("Loading module_env from: %s", module_path)
 start_time = time.time()
-detector = hub.load("/model_ssd").signatures["default"]
+detector = hub.load(module_path).signatures["default"]
 end_time = time.time()
 log.info("Loading module time: %.2f", end_time - start_time)
 
@@ -228,6 +234,9 @@ def load_img_from_fs(path):
 
 
 def save_img(img, raw=False, filename="", directory="results"):
+    if img is None:
+        raise ValueError("There is no image to save", img)
+
     if raw:
         img = tf.io.decode_jpeg(img, channels=3)
 
@@ -278,55 +287,121 @@ def crop_img(img, box):
     )
 
 
-def draw_boxes_with_cars(inference_result, img, save=False):
-    cars = filter_cars(inference_result)
-    log.debug(cars)
+def draw_boxes_with_objects_for_class(
+    inference_result, img, for_class, min_score=0.1, max_boxes=20,
+):
+    potential_objects = filter_by_detection_class_entities(
+        inference_result, [for_class]
+    )
+    log.debug(potential_objects)
 
     image_with_boxes = draw_boxes_with_text(
         img,
-        cars["detection_boxes"],
-        cars["detection_class_entities"],
-        cars["detection_scores"],
-        min_score=0.1,
-        max_boxes=20,
+        potential_objects["detection_boxes"],
+        potential_objects["detection_class_entities"],
+        potential_objects["detection_scores"],
+        min_score=min_score,
+        max_boxes=max_boxes,
     )
 
-    if save:
-        img_path = save_img(image_with_boxes)
-        log.debug("Path to img: %s", img_path)
+    img_path = save_img(image_with_boxes)
+    log.debug("Path to img: %s", img_path)
 
 
-def crop_or_draw_box_with_potential_car(
-    inference_result, img, area_threshold=20, score_threshold=0.4
+def crop_or_draw_box_with_potential_detected_object(
+    inference_result, img, for_class, area_threshold=20, score_threshold=0.4
 ):
-    cars = filter_cars(inference_result)
-    car_area, car_score = get_coordinates_and_score_of_the_biggest_area(
-        cars,
-        for_class=b"Car",
+    potential_objects = filter_by_detection_class_entities(
+        inference_result, [for_class]
+    )
+    object_area, object_score = get_coordinates_and_score_of_the_biggest_area(
+        potential_objects,
+        for_class=for_class,
         area_threshold=area_threshold,
         score_threshold=score_threshold,
     )
 
-    if car_area.size != 0 and car_score.size != 0:
-        image_with_potential_car_in_bounding_box = draw_boxes(
+    if object_area.size != 0 and object_score.size != 0:
+        image_with_potential_object_in_bounding_box = draw_boxes_with_text(
             img,
-            np.array([car_area]),
-            np.array([b"Car"]),
-            np.array([car_score]),
+            np.array([object_area]),
+            np.array([for_class]),
+            np.array([object_score]),
         )
 
-        cropped_image_with_potential_car = crop_img(img, car_area)
-
-        log.debug("CROPPED")
-        log.debug(cropped_image_with_potential_car)
+        cropped_image_with_potential_object = crop_img(img, object_area)
 
         return (
-            cropped_image_with_potential_car,
-            image_with_potential_car_in_bounding_box,
+            cropped_image_with_potential_object,
+            image_with_potential_object_in_bounding_box,
         )
 
-    log.info("Potential car not found")
+    log.info("Potential object not found")
     return None, None
+
+
+def save_and_get_cropped_and_drawn_images_for_potential_detected_object(
+    inference_result, image, for_class, area_threshold=20, score_threshold=0.4
+):
+    cropped, drawn = crop_or_draw_box_with_potential_detected_object(
+        inference_result,
+        image,
+        for_class,
+        area_threshold=area_threshold,
+        score_threshold=score_threshold,
+    )
+
+    try:
+        save_img(cropped)
+        save_img(drawn)
+    except ValueError as e:
+        log.error(e)
+
+    return cropped, drawn
+
+
+def inference_image(image):
+    results = run_detector(detector, image)
+    draw_boxes_with_objects_for_class(results, image, b"Car")
+    (
+        cropped,
+        drawn,
+    ) = save_and_get_cropped_and_drawn_images_for_potential_detected_object(
+        results, image, b"Car"
+    )
+
+    # plates before 2nd inference
+    save_and_get_cropped_and_drawn_images_for_potential_detected_object(
+        results,
+        image,
+        b"Vehicle registration plate",
+        area_threshold=0,
+        score_threshold=0.1,
+    )
+
+    # 2nd inference
+    results = run_detector(detector, cropped)
+    log.debug("2nd")
+    log.debug(results)
+    draw_boxes_with_objects_for_class(
+        results,
+        cropped,
+        b"Vehicle registration plate",
+        min_score=0.05,
+        max_boxes=10,
+    )
+    cropped, drawn = crop_or_draw_box_with_potential_detected_object(
+        results,
+        cropped,
+        b"Vehicle registration plate",
+        score_threshold=0.1,
+        area_threshold=0,
+    )
+    try:
+        save_img(drawn)
+        save_img(cropped)
+    except ValueError as e:
+        log.error(e)
 
 
 @app.route("/")
@@ -338,24 +413,20 @@ def hello():
 def photo():
     image_url = request.json["url"]
     downloaded_image_path = download_image_from_url_and_save(image_url)
-    image = load_img_from_fs(downloaded_image_path)
     log.debug("downloaded path: %s", downloaded_image_path)
-    results = run_detector(detector, image)
-    draw_boxes_with_cars(results, image, True)
-    cropped, drawn = crop_or_draw_box_with_potential_car(results, image, True)
-    save_img(cropped)
-    save_img(drawn)
+    image = load_img_from_fs(downloaded_image_path)
+
+    inference_image(image)
+
     return "ok"
 
 
 @app.route("/upload2", methods=["POST"])
 def raw_image():
     uploaded_photo_path = save_img(request.data, raw=True, directory="upload")
-    img = tf.image.decode_jpeg(request.data, channels=3)
-    log.debug(img)
     log.debug("uploaded path: %s", uploaded_photo_path)
-    results = run_detector(detector, img)
-    draw_boxes_with_cars(results, img, True)
-    cropped, _ = crop_or_draw_box_with_potential_car(results, img, True)
-    save_img(cropped)
+    image = tf.image.decode_jpeg(request.data, channels=3)
+
+    inference_image(image)
+
     return "ok"
