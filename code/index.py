@@ -38,7 +38,7 @@ log.info(
 
 # Object detection module
 start_time = time.time()
-detector = hub.load("/model").signatures["default"]
+detector = hub.load("/model_ssd").signatures["default"]
 end_time = time.time()
 log.info("Loading module time: %.2f", end_time - start_time)
 
@@ -182,6 +182,12 @@ def filter_by_detection_class_entities(
 
 def filter_cars(inference_result, min_score=0.1):
     return filter_by_detection_class_entities(inference_result, [b"Car"])
+
+
+def filter_license_plates(inference_result, min_score=0.1):
+    return filter_by_detection_class_entities(
+        inference_result, [b"Vehicle registration plate"]
+    )
 
 
 def get_coordinates_and_score_of_the_biggest_area(

@@ -12,7 +12,8 @@ services:
         volumes:
             - ../results:/src/results
             - ../upload:/src/upload
-            - /tmp/openimages_v4__ssd__mobilenet_v2:/model
+            - /tmp/openimages_v4__ssd__mobilenet_v2:/model_ssd
+            - /tmp/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn
             - ../code:/src/code
         environment:
             # https://stackoverflow.com/a/51362214
