@@ -233,7 +233,9 @@ def load_img_from_fs(path):
     return img
 
 
-def save_img(img, raw=False, filename="", directory="results"):
+def save_img(
+    img, raw=False, filename="", directory="results", filename_sufix=""
+):
     if img is None:
         raise ValueError("There is no image to save", img)
 
@@ -244,7 +246,7 @@ def save_img(img, raw=False, filename="", directory="results"):
 
     if not filename:
         now = time.time()
-        filename = f"{now}"
+        filename = f"{now}{filename_sufix}"
 
     filepath = f"./{directory}/{filename}.jpeg"
     tf.io.write_file(filepath, img_jpeg)
@@ -304,7 +306,9 @@ def draw_boxes_with_objects_for_class(
         max_boxes=max_boxes,
     )
 
-    img_path = save_img(image_with_boxes)
+    img_path = save_img(
+        image_with_boxes, filename_sufix=f"boxes_for_{for_class}"
+    )
     log.debug("Path to img: %s", img_path)
 
 
@@ -340,8 +344,13 @@ def crop_or_draw_box_with_potential_detected_object(
     return None, None
 
 
-def save_and_get_cropped_and_drawn_images_for_potential_detected_object(
-    inference_result, image, for_class, area_threshold=20, score_threshold=0.4
+def get_cropped_and_drawn_images_for_potential_detected_object(
+    inference_result,
+    image,
+    for_class,
+    save=False,
+    area_threshold=20,
+    score_threshold=0.4,
 ):
     cropped, drawn = crop_or_draw_box_with_potential_detected_object(
         inference_result,
@@ -351,11 +360,12 @@ def save_and_get_cropped_and_drawn_images_for_potential_detected_object(
         score_threshold=score_threshold,
     )
 
-    try:
-        save_img(cropped)
-        save_img(drawn)
-    except ValueError as e:
-        log.error(e)
+    if save:
+        try:
+            save_img(drawn, filename_sufix=f"boxes_for_{for_class}")
+            save_img(cropped, filename_sufix=f"cropped_for_{for_class}")
+        except ValueError as e:
+            log.error(e)
 
     return cropped, drawn
 
@@ -366,42 +376,24 @@ def inference_image(image):
     (
         cropped,
         drawn,
-    ) = save_and_get_cropped_and_drawn_images_for_potential_detected_object(
+    ) = get_cropped_and_drawn_images_for_potential_detected_object(
         results, image, b"Car"
     )
 
-    # plates before 2nd inference
-    save_and_get_cropped_and_drawn_images_for_potential_detected_object(
-        results,
-        image,
-        b"Vehicle registration plate",
-        area_threshold=0,
-        score_threshold=0.1,
-    )
+    bottom_of_cropped_car = crop_img(cropped, [0.25, 0.0, 1.0, 1.0])
+    save_img(bottom_of_cropped_car, filename_sufix="bottom")
 
     # 2nd inference
-    results = run_detector(detector, cropped)
-    log.debug("2nd")
+    results = run_detector(detector, bottom_of_cropped_car)
     log.debug(results)
-    draw_boxes_with_objects_for_class(
+    cropped, drawn = get_cropped_and_drawn_images_for_potential_detected_object(
         results,
-        cropped,
+        bottom_of_cropped_car,
         b"Vehicle registration plate",
-        min_score=0.05,
-        max_boxes=10,
-    )
-    cropped, drawn = crop_or_draw_box_with_potential_detected_object(
-        results,
-        cropped,
-        b"Vehicle registration plate",
+        True,
         score_threshold=0.1,
         area_threshold=0,
     )
-    try:
-        save_img(drawn)
-        save_img(cropped)
-    except ValueError as e:
-        log.error(e)
 
 
 @app.route("/")
