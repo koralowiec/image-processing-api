@@ -10,7 +10,7 @@ model_path_faster_rcnn=/tmp/$module_name_faster_rcnn/
 docker run --gpus all \
 --rm --init -it \
 -p 5000:5000 \
--e MODULE=FASTER_RCNN \
+-e MODULE=true \
 --mount type=bind,\
 source=$model_path_ssd,\
 target=/model_ssd \

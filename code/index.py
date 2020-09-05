@@ -396,6 +396,37 @@ def inference_image(image):
     )
 
 
+def inference_image_with_cropping(image):
+    results = run_detector(detector, image)
+    draw_boxes_with_objects_for_class(results, image, b"Car")
+    (
+        cropped,
+        drawn,
+    ) = get_cropped_and_drawn_images_for_potential_detected_object(
+        results, image, b"Car"
+    )
+
+    bottom_of_cropped_car = crop_img(cropped, [0.25, 0.0, 1.0, 1.0])
+    save_img(bottom_of_cropped_car, filename_sufix="bottom")
+
+    pieces = crop_to_pieces(bottom_of_cropped_car)
+
+    for piece in pieces:
+        results = run_detector(detector, piece)
+        # log.debug(results)
+        (
+            cropped,
+            drawn,
+        ) = get_cropped_and_drawn_images_for_potential_detected_object(
+            results,
+            piece,
+            b"Vehicle registration plate",
+            True,
+            score_threshold=0.1,
+            area_threshold=0,
+        )
+
+
 @app.route("/")
 def hello():
     return "Hello, World!"
@@ -420,5 +451,40 @@ def raw_image():
     image = tf.image.decode_jpeg(request.data, channels=3)
 
     inference_image(image)
+
+    return "ok"
+
+
+def crop_to_pieces(img):
+    pieces = []
+
+    pieces.append(crop_and_save(img, [0.0, 0.0, 0.5, 0.5]))
+    pieces.append(crop_and_save(img, [0.0, 0.5, 0.5, 1.0]))
+    pieces.append(crop_and_save(img, [0.5, 0.0, 1.0, 0.5]))
+    pieces.append(crop_and_save(img, [0.5, 0.5, 1.0, 1.0]))
+
+    pieces.append(crop_and_save(img, [0.0, 0.25, 0.5, 0.75]))
+    pieces.append(crop_and_save(img, [0.25, 0.25, 0.75, 0.75]))
+    pieces.append(crop_and_save(img, [0.5, 0.25, 1.0, 0.75]))
+
+    # pieces.append(crop_and_save(img, [0.25, 0.15, 0.75, 0.65]))
+    # pieces.append(crop_and_save(img, [0.25, 0.45, 0.75, 0.85]))
+    return pieces
+
+
+def crop_and_save(img, box):
+    cropped = crop_img(img, box)
+    save_img(cropped, directory="results/cropped", filename_sufix="cropped")
+    return cropped
+
+
+@app.route("/crop", methods=["POST"])
+def cropping():
+    image_url = request.json["url"]
+    downloaded_image_path = download_image_from_url_and_save(image_url)
+    log.debug("downloaded path: %s", downloaded_image_path)
+    image = load_img_from_fs(downloaded_image_path)
+
+    inference_image_with_cropping(image)
 
     return "ok"
