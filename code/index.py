@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -17,6 +17,10 @@ import itertools
 
 import os
 import logging as log
+
+import requests
+import base64
+import json
 
 debug = os.environ.get("DEBUG")
 log.basicConfig(
@@ -47,6 +51,13 @@ start_time = time.time()
 detector = hub.load(module_path).signatures["default"]
 end_time = time.time()
 log.info("Loading module time: %.2f", end_time - start_time)
+
+# OCR server address for sending image with license plate to recognize characters
+ocr_server_address_env = os.environ.get("OCR_SERVER")
+ocr_server_address = (
+    ocr_server_address_env if ocr_server_address_env is not None else "ocr:5000"
+)
+log.info("OCR server address: %s", ocr_server_address)
 
 
 def download_image_from_url_and_save(url):
@@ -242,7 +253,7 @@ def save_img(
     if raw:
         img = tf.io.decode_jpeg(img, channels=3)
 
-    img_jpeg = tf.io.encode_jpeg(img)
+    img_jpeg = tf.io.encode_jpeg(img, quality=100)
 
     if not filename:
         now = time.time()
@@ -395,6 +406,8 @@ def inference_image(image):
         area_threshold=0,
     )
 
+    return cropped
+
 
 def inference_image_with_cropping(image):
     results = run_detector(detector, image)
@@ -413,7 +426,6 @@ def inference_image_with_cropping(image):
 
     for piece in pieces:
         results = run_detector(detector, piece)
-        # log.debug(results)
         (
             cropped,
             drawn,
@@ -425,6 +437,20 @@ def inference_image_with_cropping(image):
             score_threshold=0.1,
             area_threshold=0,
         )
+
+
+def send_image_to_ocr(img, raw=False):
+    if not raw:
+        img = tf.io.encode_jpeg(img, quality=100)
+        img = img.numpy()
+
+    img_b64 = base64.b64encode(img)
+    img_dec = img_b64.decode("utf-8")
+
+    r = requests.post(
+        f"http://{ocr_server_address}/ocr?base64=true", json={"img": img_dec}
+    )
+    return r.json()
 
 
 @app.route("/")
@@ -439,9 +465,13 @@ def photo():
     log.debug("downloaded path: %s", downloaded_image_path)
     image = load_img_from_fs(downloaded_image_path)
 
-    inference_image(image)
+    image_with_plate = inference_image(image)
 
-    return "ok"
+    numbers = []
+    if image_with_plate is not None:
+        numbers = send_image_to_ocr(image_with_plate)
+
+    return Response(json.dumps(numbers), mimetype="application/json")
 
 
 @app.route("/upload2", methods=["POST"])
@@ -450,9 +480,13 @@ def raw_image():
     log.debug("uploaded path: %s", uploaded_photo_path)
     image = tf.image.decode_jpeg(request.data, channels=3)
 
-    inference_image(image)
+    image_with_plate = inference_image(image)
 
-    return "ok"
+    numbers = []
+    if image_with_plate is not None:
+        numbers = send_image_to_ocr(image_with_plate)
+
+    return Response(json.dumps(numbers), mimetype="application/json")
 
 
 def crop_to_pieces(img):
@@ -466,9 +500,6 @@ def crop_to_pieces(img):
     pieces.append(crop_and_save(img, [0.0, 0.25, 0.5, 0.75]))
     pieces.append(crop_and_save(img, [0.25, 0.25, 0.75, 0.75]))
     pieces.append(crop_and_save(img, [0.5, 0.25, 1.0, 0.75]))
-
-    # pieces.append(crop_and_save(img, [0.25, 0.15, 0.75, 0.65]))
-    # pieces.append(crop_and_save(img, [0.25, 0.45, 0.75, 0.85]))
     return pieces
 
 

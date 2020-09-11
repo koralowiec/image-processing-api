@@ -20,3 +20,9 @@ services:
             - PYTHONUNBUFFERED=1
             - DEBUG=true
             - MODULE
+    ocr:
+        image: ghcr.io/koralowiec/ocr-server:latest
+        ports: 
+            - "5001:5000"
+        environment:
+            - PYTHONUNBUFFERED=1
