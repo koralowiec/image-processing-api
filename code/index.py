@@ -448,7 +448,7 @@ def send_image_to_ocr(img, raw=False):
     img_dec = img_b64.decode("utf-8")
 
     r = requests.post(
-        f"http://{ocr_server_address}/ocr?base64=true", json={"img": img_dec}
+        f"http://{ocr_server_address}/ocr/base64", json={"b64Encoded": img_dec}
     )
     return r.json()
 
