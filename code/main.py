@@ -1,4 +1,5 @@
-from flask import Flask, request, Response
+from fastapi import FastAPI, Depends, File
+from pydantic import BaseModel
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -27,7 +28,7 @@ log.basicConfig(
     level=log.DEBUG if debug else log.INFO, format="%(asctime)s - %(message)s"
 )
 
-app = Flask(__name__)
+app = FastAPI()
 
 # https://github.com/tensorflow/hub/blob/master/examples/colab/object_detection.ipynb
 
@@ -453,42 +454,6 @@ def send_image_to_ocr(img, raw=False):
     return r.json()
 
 
-@app.route("/")
-def hello():
-    return "Hello, World!"
-
-
-@app.route("/upload", methods=["POST"])
-def photo():
-    image_url = request.json["url"]
-    downloaded_image_path = download_image_from_url_and_save(image_url)
-    log.debug("downloaded path: %s", downloaded_image_path)
-    image = load_img_from_fs(downloaded_image_path)
-
-    image_with_plate = inference_image(image)
-
-    numbers = []
-    if image_with_plate is not None:
-        numbers = send_image_to_ocr(image_with_plate)
-
-    return Response(json.dumps(numbers), mimetype="application/json")
-
-
-@app.route("/upload2", methods=["POST"])
-def raw_image():
-    uploaded_photo_path = save_img(request.data, raw=True, directory="upload")
-    log.debug("uploaded path: %s", uploaded_photo_path)
-    image = tf.image.decode_jpeg(request.data, channels=3)
-
-    image_with_plate = inference_image(image)
-
-    numbers = []
-    if image_with_plate is not None:
-        numbers = send_image_to_ocr(image_with_plate)
-
-    return Response(json.dumps(numbers), mimetype="application/json")
-
-
 def crop_to_pieces(img):
     pieces = []
 
@@ -509,9 +474,49 @@ def crop_and_save(img, box):
     return cropped
 
 
-@app.route("/crop", methods=["POST"])
-def cropping():
-    image_url = request.json["url"]
+@app.get("/")
+def hello():
+    return "Hello, World!"
+
+
+class UploadUrlReqBody(BaseModel):
+    url: str
+
+
+@app.post("/upload")
+def photo(uploadUrlReqBody: UploadUrlReqBody):
+    image_url = uploadUrlReqBody.url
+    downloaded_image_path = download_image_from_url_and_save(image_url)
+    log.debug("downloaded path: %s", downloaded_image_path)
+    image = load_img_from_fs(downloaded_image_path)
+
+    image_with_plate = inference_image(image)
+
+    numbers: dict = {}
+    if image_with_plate is not None:
+        numbers = send_image_to_ocr(image_with_plate)
+
+    return numbers
+
+
+@app.post("/upload2")
+def raw_image(image: bytes = File(...)):
+    uploaded_photo_path = save_img(image, raw=True, directory="upload")
+    log.debug("uploaded path: %s", uploaded_photo_path)
+    image = tf.image.decode_jpeg(image, channels=3)
+
+    image_with_plate = inference_image(image)
+
+    numbers: dict = {}
+    if image_with_plate is not None:
+        numbers = send_image_to_ocr(image_with_plate)
+
+    return numbers
+
+
+@app.post("/crop")
+def cropping(uploadUrlReqBody: UploadUrlReqBody):
+    image_url = uploadUrlReqBody.url
     downloaded_image_path = download_image_from_url_and_save(image_url)
     log.debug("downloaded path: %s", downloaded_image_path)
     image = load_img_from_fs(downloaded_image_path)
