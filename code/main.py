@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow_io as tfio
-import tensorflow_hub as hub
 
 # For downloading the image.
 from six.moves.urllib.request import urlopen
@@ -30,28 +29,8 @@ log.basicConfig(
 
 app = FastAPI()
 
-# https://github.com/tensorflow/hub/blob/master/examples/colab/object_detection.ipynb
-
 # Print Tensorflow version
 log.info("TensorFlow version: %s", tf.__version__)
-
-# Check available GPU devices.
-log.info(
-    "The following GPU devices are available: %s" % tf.test.gpu_device_name()
-)
-
-
-# Object detection module
-module_env = os.environ.get("MODULE")
-log.info("MODULE env: %s", module_env)
-module_path = (
-    "/model_faster_rcnn" if module_env == "FASTER_RCNN" else "/model_ssd"
-)
-log.info("Loading module_env from: %s", module_path)
-start_time = time.time()
-detector = hub.load(module_path).signatures["default"]
-end_time = time.time()
-log.info("Loading module time: %.2f", end_time - start_time)
 
 # OCR server address for sending image with license plate to recognize characters
 ocr_server_address_env = os.environ.get("OCR_SERVER")
@@ -59,6 +38,13 @@ ocr_server_address = (
     ocr_server_address_env if ocr_server_address_env is not None else "ocr:5000"
 )
 log.info("OCR server address: %s", ocr_server_address)
+
+# API for object detection (it runs TF Hub's model)
+predict_api_address_env = os.environ.get("PREDICT_API")
+predict_api_address = (
+    predict_api_address_env if predict_api_address_env is not None else ""
+)
+log.info("Predict API address: %s", predict_api_address)
 
 
 def download_image_from_url_and_save(url):
@@ -101,7 +87,7 @@ def draw_boxes_with_text(
     for box in boxes:
         score = next(scores_iterator)
         if score >= min_score and box_i <= max_boxes:
-            class_name = str(next(class_names_iterator), encoding)
+            class_name = next(class_names_iterator)
             score = "{:.0f}".format(score * 100)
             text = f"{class_name} {score}%"
 
@@ -150,7 +136,7 @@ def compute_area(coordinates):
 
 
 def filter_by_detection_class_entities(
-    inference_result, entities, min_score=0.1
+    inference_result, entities, min_score=0.0
 ):
     detection_class_entities = np.array([], dtype=object)
     detection_class_names = np.array([], dtype=object)
@@ -199,12 +185,12 @@ def filter_by_detection_class_entities(
 
 
 def filter_cars(inference_result, min_score=0.1):
-    return filter_by_detection_class_entities(inference_result, [b"Car"])
+    return filter_by_detection_class_entities(inference_result, ["Car"])
 
 
 def filter_license_plates(inference_result, min_score=0.1):
     return filter_by_detection_class_entities(
-        inference_result, [b"Vehicle registration plate"]
+        inference_result, ["Vehicle registration plate"]
     )
 
 
@@ -265,15 +251,25 @@ def save_img(
     return filepath
 
 
-def run_detector(detector, img):
-    converted_img = tf.image.convert_image_dtype(img, tf.float32)[
-        tf.newaxis, ...
-    ]
-    start_time = time.time()
-    result = detector(converted_img)
-    end_time = time.time()
+def send_image_to_detector(img, raw=False):
+    if not raw:
+        img = tf.io.encode_jpeg(img, quality=100)
+        img = img.numpy()
 
-    result = {key: value.numpy() for key, value in result.items()}
+    img_b64 = base64.b64encode(img)
+    img_dec = img_b64.decode("utf-8")
+
+    r = requests.post(
+        f"http://{predict_api_address}/predict", json={"imgBase64": img_dec},
+    )
+
+    return r.json()
+
+
+def get_results_from_detector(img):
+    start_time = time.time()
+    result = send_image_to_detector(img)
+    end_time = time.time()
 
     log.info("Found %d objects.", len(result["detection_scores"]))
     log.info("Inference time: %.2f", end_time - start_time)
@@ -330,6 +326,7 @@ def crop_or_draw_box_with_potential_detected_object(
     potential_objects = filter_by_detection_class_entities(
         inference_result, [for_class]
     )
+
     object_area, object_score = get_coordinates_and_score_of_the_biggest_area(
         potential_objects,
         for_class=for_class,
@@ -383,27 +380,28 @@ def get_cropped_and_drawn_images_for_potential_detected_object(
 
 
 def inference_image(image):
-    results = run_detector(detector, image)
-    draw_boxes_with_objects_for_class(results, image, b"Car")
+    results = get_results_from_detector(image)
+
+    draw_boxes_with_objects_for_class(results, image, "Car")
     (
         cropped,
         drawn,
     ) = get_cropped_and_drawn_images_for_potential_detected_object(
-        results, image, b"Car"
+        results, image, "Car"
     )
 
     bottom_of_cropped_car = crop_img(cropped, [0.25, 0.0, 1.0, 1.0])
     save_img(bottom_of_cropped_car, filename_sufix="bottom")
 
     # 2nd inference
-    results = run_detector(detector, bottom_of_cropped_car)
+    results = get_results_from_detector(bottom_of_cropped_car)
     log.debug(results)
     cropped, drawn = get_cropped_and_drawn_images_for_potential_detected_object(
         results,
         bottom_of_cropped_car,
-        b"Vehicle registration plate",
+        "Vehicle registration plate",
         True,
-        score_threshold=0.1,
+        score_threshold=0.05,
         area_threshold=0,
     )
 
@@ -411,13 +409,13 @@ def inference_image(image):
 
 
 def inference_image_with_cropping(image):
-    results = run_detector(detector, image)
-    draw_boxes_with_objects_for_class(results, image, b"Car")
+    results = get_results_from_detector(image)
+    draw_boxes_with_objects_for_class(results, image, "Car")
     (
         cropped,
         drawn,
     ) = get_cropped_and_drawn_images_for_potential_detected_object(
-        results, image, b"Car"
+        results, image, "Car"
     )
 
     bottom_of_cropped_car = crop_img(cropped, [0.25, 0.0, 1.0, 1.0])
@@ -426,16 +424,16 @@ def inference_image_with_cropping(image):
     pieces = crop_to_pieces(bottom_of_cropped_car)
 
     for piece in pieces:
-        results = run_detector(detector, piece)
+        results = get_results_from_detector(piece)
         (
             cropped,
             drawn,
         ) = get_cropped_and_drawn_images_for_potential_detected_object(
             results,
             piece,
-            b"Vehicle registration plate",
+            "Vehicle registration plate",
             True,
-            score_threshold=0.1,
+            score_threshold=0.05,
             area_threshold=0,
         )
 

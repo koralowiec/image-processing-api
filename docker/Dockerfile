@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.2.0-gpu as base
+FROM python:3.8-slim as base
 
 WORKDIR /src
 
