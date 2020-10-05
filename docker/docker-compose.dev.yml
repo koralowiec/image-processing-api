@@ -22,3 +22,10 @@ services:
             - "5001:5000"
         environment:
             - PYTHONUNBUFFERED=1
+    predict-api:
+        image: ghcr.io/koralowiec/predict-api:cpu
+        ports: 
+            - "5002:5000"
+        volumes:
+            - ../../predict-api/modules/openimages_v4__ssd__mobilenet_v2:/model_ssd
+            - ../../predict-api/modules/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn

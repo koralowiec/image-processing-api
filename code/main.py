@@ -42,7 +42,9 @@ log.info("OCR server address: %s", ocr_server_address)
 # API for object detection (it runs TF Hub's model)
 predict_api_address_env = os.environ.get("PREDICT_API")
 predict_api_address = (
-    predict_api_address_env if predict_api_address_env is not None else ""
+    predict_api_address_env
+    if predict_api_address_env is not None
+    else "predict-api:5000"
 )
 log.info("Predict API address: %s", predict_api_address)
 
