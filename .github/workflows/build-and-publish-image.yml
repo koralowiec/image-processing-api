@@ -19,3 +19,4 @@ jobs:
           password: ${{ secrets.CR_PAT }}
           registry: ghcr.io
           repository: koralowiec/image-processing-api
+          target: base
