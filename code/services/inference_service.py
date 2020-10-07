@@ -65,12 +65,12 @@ class InferenceService:
         score_threshold: float,
     ) -> DetectionResult:
         """ Returns one result, which area and score is above given thresholds.
-        If more than one result comply with conditions, one with the biggest area is returned.
+        If more than one result comply with conditions, one with the biggest score is returned.
 
         Function doesn't filter passed results by class_entity.
         So it's needed to pass filtered ones if you want find e.g. potential car.
         """
-        max_area = 0
+        max_score = 0
         index = -1
 
         for i in range(len(results)):
@@ -78,11 +78,11 @@ class InferenceService:
             score = results[i].score
 
             if (
-                area > max_area
+                score > max_score
                 and area > area_threshold
                 and score >= score_threshold
             ):
-                max_area = area
+                max_score = score
                 index = i
 
         if index == -1:
@@ -156,6 +156,11 @@ class InferenceService:
             image, self._car_class_entity
         )
 
+        image_with_boxes_for_car = ImageProcessingService.draw_bounding_boxes_with_class_entity(
+            image, first_result, max_number_of_boxes=5, show_only_score=True
+        )
+        image_with_boxes_for_car.save(filename_sufix="car")
+
         image_with_bottom_of_car = ImageProcessingService.crop_image(
             cropped_car, self._bottom_of_car_box
         )
@@ -171,7 +176,15 @@ class InferenceService:
             area_threshold=0,
             score_threshold=0.0,
         )
-        cropped_license_plate.save(filename_sufix="license-plate")
+        cropped_license_plate.save(filename_sufix="cropped-license-plate")
+
+        image_with_boxes_for_plate = ImageProcessingService.draw_bounding_boxes_with_class_entity(
+            image_with_bottom_of_car,
+            second_result,
+            max_number_of_boxes=5,
+            show_only_score=True,
+        )
+        image_with_boxes_for_plate.save(filename_sufix="license-plate")
 
         ocr_result = self.send_image_to_ocr(cropped_license_plate)
         log.debug(ocr_result)

@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from six.moves.urllib.request import urlopen
-from tensorflow import Tensor
-from tensorflow.image import decode_jpeg, encode_jpeg
+from tensorflow import Tensor, float32, uint8
+from tensorflow.image import decode_jpeg, encode_jpeg, convert_image_dtype
 from tensorflow.io import read_file, write_file
+from tensorflow_addons.image.utils import to_4D_image, from_4D_image
 import base64
 import time
 import numpy as np
@@ -10,6 +11,7 @@ import numpy as np
 
 @dataclass
 class Image:
+    # 3D tensor uint8
     image_tensor: Tensor
 
     @classmethod
@@ -32,6 +34,12 @@ class Image:
     def from_file_system(cls, path: str):
         image = read_file(path)
         return cls.from_raw(image)
+
+    @classmethod
+    def from_4D_float32_tensor(cls, image_4D_f32: Tensor):
+        image_unint8 = convert_image_dtype(image_4D_f32, uint8)
+        image = from_4D_image(image_unint8, 3)
+        return cls(image)
 
     def save(
         self,
@@ -58,3 +66,9 @@ class Image:
         img_np = self.to_numpy_array()
         img_b64 = base64.b64encode(img_np)
         return img_b64.decode("utf-8")
+
+    def to_4D_float32(self) -> Tensor:
+        img_4D = to_4D_image(self.image_tensor)
+        img_4D_f32 = convert_image_dtype(img_4D, float32)
+        return img_4D_f32
+
