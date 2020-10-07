@@ -1,0 +1,2 @@
+class PotentialObjectNotFoundException(Exception):
+    pass

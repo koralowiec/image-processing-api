@@ -53,3 +53,8 @@ class Image:
     def to_numpy_array(self) -> np.ndarray:
         img_jpeg = encode_jpeg(self.image_tensor, quality=100)
         return img_jpeg.numpy()
+
+    def to_base64(self) -> str:
+        img_np = self.to_numpy_array()
+        img_b64 = base64.b64encode(img_np)
+        return img_b64.decode("utf-8")
