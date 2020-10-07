@@ -1,0 +1,21 @@
+name: Publish Docker image to GitHub Container Registry
+on: 
+  push:
+      branches:
+        - master
+        - github-workflow-1
+jobs:
+  push_image_to_ghcr:
+    name: Push image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Push to GitHub Container Registry
+        uses: docker/build-push-action@v1
+        with:
+          dockerfile: docker/Dockerfile
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+          registry: ghcr.io
+          repository: koralowiec/image-processing-api

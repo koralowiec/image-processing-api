@@ -1,5 +1,7 @@
 FROM python:3.8-slim as base
 
+LABEL org.opencontainers.image.source https://github.com/koralowiec/image-processing-api
+
 WORKDIR /src
 
 COPY requirements.txt ./
