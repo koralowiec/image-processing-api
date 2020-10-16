@@ -7,6 +7,11 @@ from tensorflow_addons.image.utils import to_4D_image, from_4D_image
 import base64
 import time
 import numpy as np
+import uuid
+import io
+from minio.error import ResponseError
+
+from utils.minio_setup import minio_client, bucket_name
 
 
 @dataclass
@@ -58,6 +63,25 @@ class Image:
 
         return filepath
 
+    def save_to_minio(self, filename_sufix: str = "") -> str:
+        image_bytes = self.to_bytes()
+
+        uid = uuid.uuid1()
+        if filename_sufix != "":
+            filename_sufix = f"-{filename_sufix}"
+        filename = f"{uid}{filename_sufix}.jpeg"
+        path = f"{bucket_name}/{filename}"
+
+        try:
+            with io.BytesIO(image_bytes) as data:
+                _ = minio_client.put_object(
+                    bucket_name, filename, data, len(image_bytes)
+                )
+        except ResponseError as e:
+            print(e)
+
+        return path
+
     def to_numpy_array(self) -> np.ndarray:
         img_jpeg = encode_jpeg(self.image_tensor, quality=100)
         return img_jpeg.numpy()
@@ -71,4 +95,13 @@ class Image:
         img_4D = to_4D_image(self.image_tensor)
         img_4D_f32 = convert_image_dtype(img_4D, float32)
         return img_4D_f32
+
+    def to_bytes(self) -> bytes:
+        image_jpeg = encode_jpeg(self.image_tensor, quality=100)
+        image_bytes = image_jpeg.numpy()
+        return image_bytes
+
+    def to_raw_str(self) -> str:
+        image_bytes = self.to_bytes()
+        return str(image_bytes)
 

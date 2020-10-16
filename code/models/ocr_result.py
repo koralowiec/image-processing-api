@@ -4,12 +4,9 @@ from typing import List
 
 @dataclass
 class OcrResult:
-    number_from_separate_characters: str
-    numbers_from_raw_image: List[str]
+    license_plate_number: str
+    image_links: dict
 
     @classmethod
     def from_json(cls, json_response: dict):
-        return cls(
-            json_response["numberFromSeparateChars"],
-            json_response["numbersFromOCR"],
-        )
+        return cls(json_response["licensePlateNumber"], json_response["links"])

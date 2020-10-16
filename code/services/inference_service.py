@@ -6,7 +6,11 @@ from models.image import Image
 
 from models.detection_result import DetectionResult, DetectionResultsDecoder
 from services.image_processing_service import ImageProcessingService
-from utils.exceptions import PotentialObjectNotFoundException
+from utils.exceptions import (
+    PotentialObjectNotFoundException,
+    CarNotFoundException,
+    LicensePlateNotFoundException,
+)
 from models.ocr_result import OcrResult
 
 # API for object detection (it runs TF Hub's model)
@@ -124,10 +128,7 @@ class InferenceService:
                 score_threshold=score_threshold,
             )
         except PotentialObjectNotFoundException:
-            # TODO figure out how to handle errors/exceptions
             raise
-            # log.error(e)
-            # return result_filtered_by_class_entity, None, None
 
         cropped_image_with_potential_object = ImageProcessingService.crop_image(
             image, detection_result_of_potential_object.box
@@ -148,34 +149,55 @@ class InferenceService:
         crops that slice (so now it should be slice with license plate)
         and sends that cropped image to OCR.
         """
-        (
-            first_result,
-            potential_car,
-            cropped_car,
-        ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
-            image, self._car_class_entity
-        )
+
+        try:
+            (
+                first_result,
+                potential_car,
+                cropped_car,
+            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
+                image, self._car_class_entity
+            )
+        except PotentialObjectNotFoundException as e:
+            log.error(e)
+            raise CarNotFoundException()
 
         image_with_boxes_for_car = ImageProcessingService.draw_bounding_boxes_with_class_entity(
             image, first_result, max_number_of_boxes=5, show_only_score=True
         )
         image_with_boxes_for_car.save(filename_sufix="car")
 
+        image_links = {}
+        image_links["car-boxes"] = image_with_boxes_for_car.save_to_minio(
+            filename_sufix="car-boxes"
+        )
+
         image_with_bottom_of_car = ImageProcessingService.crop_image(
             cropped_car, self._bottom_of_car_box
         )
         image_with_bottom_of_car.save(filename_sufix="bottom-car")
-
-        (
-            second_result,
-            potential_license_plate,
-            cropped_license_plate,
-        ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
-            image_with_bottom_of_car,
-            self._license_plate_class_entity,
-            area_threshold=0,
-            score_threshold=0.0,
+        image_links["cropped-car"] = cropped_car.save_to_minio(
+            filename_sufix="cropped-car"
         )
+        image_links["bottom-of-car"] = image_with_bottom_of_car.save_to_minio(
+            filename_sufix="bottom-of-car"
+        )
+
+        try:
+            (
+                second_result,
+                potential_license_plate,
+                cropped_license_plate,
+            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
+                image_with_bottom_of_car,
+                self._license_plate_class_entity,
+                area_threshold=0,
+                score_threshold=0.0,
+            )
+        except PotentialObjectNotFoundException as e:
+            log.error(e)
+            raise LicensePlateNotFoundException
+
         cropped_license_plate.save(filename_sufix="cropped-license-plate")
 
         image_with_boxes_for_plate = ImageProcessingService.draw_bounding_boxes_with_class_entity(
@@ -185,8 +207,15 @@ class InferenceService:
             show_only_score=True,
         )
         image_with_boxes_for_plate.save(filename_sufix="license-plate")
+        image_links[
+            "license-plate-boxes"
+        ] = image_with_boxes_for_plate.save_to_minio(
+            filename_sufix="license-plate-boxes"
+        )
 
         ocr_result = self.send_image_to_ocr(cropped_license_plate)
         log.debug(ocr_result)
+
+        ocr_result.image_links.update(**image_links)
 
         return ocr_result

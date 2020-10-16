@@ -16,12 +16,22 @@ services:
             - PYTHONUNBUFFERED=1
             - DEBUG=true
             - MODULE
+        env_file: 
+            - ../.minio.env
+        depends_on: 
+            minio:
+                condition: service_healthy
     ocr:
         image: ghcr.io/koralowiec/ocr-server:latest
         ports: 
             - "5001:5000"
         environment:
             - PYTHONUNBUFFERED=1
+        env_file: 
+            - ../.minio.env
+        depends_on: 
+            minio:
+                condition: service_healthy
     predict-api:
         image: ghcr.io/koralowiec/predict-api:cpu
         ports: 
@@ -29,3 +39,13 @@ services:
         volumes:
             - ../../predict-api/modules/openimages_v4__ssd__mobilenet_v2:/model_ssd
             - ../../predict-api/modules/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn
+    minio:
+        image: minio/minio
+        ports: 
+            - 9000:9000
+        env_file: 
+            - ../.minio.env
+        command: server /data
+        healthcheck:
+            test: curl -f http://localhost:9000/minio/health/live || exit 1
+            interval: 5s
