@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, File, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from models.image import Image
 from services.inference_service import InferenceService
@@ -10,6 +11,13 @@ from utils.exceptions import (
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/healthcheck")
 def healthcheck():
@@ -18,6 +26,10 @@ def healthcheck():
 
 class UploadUrlReqBody(BaseModel):
     url: str
+
+
+class Base64Body(BaseModel):
+    b64Encoded: str = Field(..., title="Image encoded in Base64")
 
 
 def get_lp_number(image: Image, inference_service: InferenceService) -> str:
@@ -37,8 +49,8 @@ def get_lp_number(image: Image, inference_service: InferenceService) -> str:
     return lp
 
 
-@app.post("/upload")
-def photo(
+@app.post("/upload/url")
+def url_image(
     uploadUrlReqBody: UploadUrlReqBody,
     inference_service: InferenceService = Depends(),
 ):
@@ -49,11 +61,21 @@ def photo(
     return get_lp_number(image, inference_service)
 
 
-@app.post("/upload2")
+@app.post("/upload/raw")
 def raw_image(
     image: bytes = File(...), inference_service: InferenceService = Depends(),
 ):
     image = Image.from_raw(image)
+    image.save(directory="upload")
+
+    return get_lp_number(image, inference_service)
+
+
+@app.post("/upload/base64")
+def base64_image(
+    base64ReqBody: Base64Body, inference_service: InferenceService = Depends(),
+):
+    image = Image.from_base64(base64ReqBody.b64Encoded)
     image.save(directory="upload")
 
     return get_lp_number(image, inference_service)
