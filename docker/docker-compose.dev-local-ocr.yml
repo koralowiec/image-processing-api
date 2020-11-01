@@ -1,0 +1,41 @@
+version: '2.4'
+services:
+    server:
+        build:
+            context: ../
+            dockerfile: ./docker/Dockerfile
+            target: dev
+        ports: 
+            - "5000:5000"
+        volumes:
+            - ../results:/src/results
+            - ../upload:/src/upload
+            - ../code:/src/code
+        environment:
+            # https://stackoverflow.com/a/51362214
+            - PYTHONUNBUFFERED=1
+            - DEBUG=true
+            - MODULE
+            - OCR_SERVER=192.168.2.100:5004
+        env_file: 
+            - ../.minio.env
+        depends_on: 
+            minio:
+                condition: service_healthy
+    predict-api:
+        image: ghcr.io/koralowiec/predict-api:cpu
+        ports: 
+            - "5002:5000"
+        volumes:
+            - ../../predict-api/modules/openimages_v4__ssd__mobilenet_v2:/model_ssd
+            - ../../predict-api/modules/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn
+    minio:
+        image: minio/minio
+        ports: 
+            - 9000:9000
+        env_file: 
+            - ../.minio.env
+        command: server /data
+        healthcheck:
+            test: curl -f http://localhost:9000/minio/health/live || exit 1
+            interval: 5s

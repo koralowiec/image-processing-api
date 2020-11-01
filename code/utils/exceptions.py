@@ -8,3 +8,7 @@ class CarNotFoundException(Exception):
 
 class LicensePlateNotFoundException(Exception):
     pass
+
+
+class CharactersCouldNotBeRecognizedByOCR(Exception):
+    pass

@@ -104,4 +104,3 @@ class Image:
     def to_raw_str(self) -> str:
         image_bytes = self.to_bytes()
         return str(image_bytes)
-

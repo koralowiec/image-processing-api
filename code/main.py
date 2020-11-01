@@ -7,6 +7,7 @@ from services.inference_service import InferenceService
 from utils.exceptions import (
     CarNotFoundException,
     LicensePlateNotFoundException,
+    CharactersCouldNotBeRecognizedByOCR,
 )
 
 app = FastAPI()
@@ -38,12 +39,17 @@ def get_lp_number(image: Image, inference_service: InferenceService) -> str:
     except CarNotFoundException:
         raise HTTPException(
             status_code=422,
-            detail="Could not find a potential car in the send image",
+            detail="Could not find a potential car in the sent image",
         )
     except LicensePlateNotFoundException:
         raise HTTPException(
             status_code=422,
-            detail="Could not find a license plate in the send image",
+            detail="Could not find a license plate in the sent image",
+        )
+    except CharactersCouldNotBeRecognizedByOCR:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not recognize characters in the sent image",
         )
 
     return lp
@@ -63,7 +69,8 @@ def url_image(
 
 @app.post("/upload/raw")
 def raw_image(
-    image: bytes = File(...), inference_service: InferenceService = Depends(),
+    image: bytes = File(...),
+    inference_service: InferenceService = Depends(),
 ):
     image = Image.from_raw(image)
     image.save(directory="upload")
@@ -73,7 +80,8 @@ def raw_image(
 
 @app.post("/upload/base64")
 def base64_image(
-    base64ReqBody: Base64Body, inference_service: InferenceService = Depends(),
+    base64ReqBody: Base64Body,
+    inference_service: InferenceService = Depends(),
 ):
     image = Image.from_base64(base64ReqBody.b64Encoded)
     image.save(directory="upload")

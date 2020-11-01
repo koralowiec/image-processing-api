@@ -10,6 +10,7 @@ from utils.exceptions import (
     PotentialObjectNotFoundException,
     CarNotFoundException,
     LicensePlateNotFoundException,
+    CharactersCouldNotBeRecognizedByOCR,
 )
 from models.ocr_result import OcrResult
 
@@ -60,6 +61,10 @@ class InferenceService:
             json={"b64Encoded": image_base64},
         )
 
+        print(response.status_code)
+        if response.status_code != 200:
+            raise CharactersCouldNotBeRecognizedByOCR
+
         return OcrResult.from_json(response.json())
 
     def find_potential_object(
@@ -68,7 +73,7 @@ class InferenceService:
         area_threshold: int,
         score_threshold: float,
     ) -> DetectionResult:
-        """ Returns one result, which area and score is above given thresholds.
+        """Returns one result, which area and score is above given thresholds.
         If more than one result comply with conditions, one with the biggest score is returned.
 
         Function doesn't filter passed results by class_entity.
@@ -81,11 +86,7 @@ class InferenceService:
             area = results[i].get_percent_of_area()
             score = results[i].score
 
-            if (
-                score > max_score
-                and area > area_threshold
-                and score >= score_threshold
-            ):
+            if score > max_score and area > area_threshold and score >= score_threshold:
                 max_score = score
                 index = i
 
@@ -116,7 +117,10 @@ class InferenceService:
 
         result = self.send_image_to_detector(image)
         result_filtered_by_class_entity = list(
-            filter(lambda r: r.class_entity == class_entity, result,)
+            filter(
+                lambda r: r.class_entity == class_entity,
+                result,
+            )
         )
 
         log.debug(result_filtered_by_class_entity)
@@ -156,14 +160,19 @@ class InferenceService:
                 potential_car,
                 cropped_car,
             ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
-                image, self._car_class_entity
+                image,
+                self._car_class_entity,
+                area_threshold=0,
+                score_threshold=0.0,
             )
         except PotentialObjectNotFoundException as e:
             log.error(e)
             raise CarNotFoundException()
 
-        image_with_boxes_for_car = ImageProcessingService.draw_bounding_boxes_with_class_entity(
-            image, first_result, max_number_of_boxes=5, show_only_score=True
+        image_with_boxes_for_car = (
+            ImageProcessingService.draw_bounding_boxes_with_class_entity(
+                image, first_result, max_number_of_boxes=5, show_only_score=True
+            )
         )
         image_with_boxes_for_car.save(filename_sufix="car")
 
@@ -199,21 +208,28 @@ class InferenceService:
             raise LicensePlateNotFoundException
 
         cropped_license_plate.save(filename_sufix="cropped-license-plate")
+        image_links["cropped-license-plate"] = cropped_license_plate.save_to_minio(
+            filename_sufix="cropped-license-plate"
+        )
 
-        image_with_boxes_for_plate = ImageProcessingService.draw_bounding_boxes_with_class_entity(
-            image_with_bottom_of_car,
-            second_result,
-            max_number_of_boxes=5,
-            show_only_score=True,
+        image_with_boxes_for_plate = (
+            ImageProcessingService.draw_bounding_boxes_with_class_entity(
+                image_with_bottom_of_car,
+                second_result,
+                max_number_of_boxes=5,
+                show_only_score=True,
+            )
         )
         image_with_boxes_for_plate.save(filename_sufix="license-plate")
-        image_links[
-            "license-plate-boxes"
-        ] = image_with_boxes_for_plate.save_to_minio(
+        image_links["license-plate-boxes"] = image_with_boxes_for_plate.save_to_minio(
             filename_sufix="license-plate-boxes"
         )
 
-        ocr_result = self.send_image_to_ocr(cropped_license_plate)
+        try:
+            ocr_result = self.send_image_to_ocr(cropped_license_plate)
+        except CharactersCouldNotBeRecognizedByOCR:
+            raise
+
         log.debug(ocr_result)
 
         ocr_result.image_links.update(**image_links)
