@@ -16,7 +16,8 @@ from utils.minio_setup import minio_client, bucket_name
 
 @dataclass
 class Image:
-    # 3D tensor uint8
+    """Class for image used in processing"""
+
     image_tensor: Tensor
 
     @classmethod
@@ -52,6 +53,8 @@ class Image:
         directory: str = "results",
         filename_sufix: str = "",
     ) -> str:
+        """Saves image to file system"""
+
         image_jpeg = encode_jpeg(self.image_tensor, quality=100)
 
         if not filename:
@@ -64,6 +67,7 @@ class Image:
         return filepath
 
     def save_to_minio(self, filename_sufix: str = "") -> str:
+        """Saves image to minio (object storage service)"""
         image_bytes = self.to_bytes()
 
         uid = uuid.uuid1()

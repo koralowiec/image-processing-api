@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from models.image import Image
@@ -19,6 +20,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount("/docs/pdoc/", StaticFiles(directory="docs"))
+
 
 @app.get("/healthcheck")
 def healthcheck():
@@ -34,6 +37,11 @@ class Base64Body(BaseModel):
 
 
 def get_lp_number(image: Image, inference_service: InferenceService) -> str:
+    """Tries to get license plate number for given image
+
+    Returns:
+        str: license plate number
+    """
     try:
         lp = inference_service.get_license_plate_number(image)
     except CarNotFoundException:

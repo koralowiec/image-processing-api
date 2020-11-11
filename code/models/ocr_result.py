@@ -1,9 +1,16 @@
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
 class OcrResult:
+    """Class for ocr-server's API response
+
+    Args:
+        license_plate_number (str): Recognized license plate number
+        image_links (dict): Dictionary with links to images uploaded to minio
+            by ocr-server
+    """
+
     license_plate_number: str
     image_links: dict
 

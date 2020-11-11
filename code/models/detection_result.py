@@ -1,12 +1,21 @@
-from typing import List
+from typing import List, Tuple
 from dataclasses import dataclass
 from json import JSONDecoder
+
+Box = Tuple[float, float, float, float]
 
 
 @dataclass
 class DetectionResult:
+    """Class for predict-api's API response
+
+    Args:
+        class_entity (str): Recognized class of object
+        box (Box): Corg
+    """
+
     class_entity: str
-    box: List[float]
+    box: Box
     score: float
 
     def get_percent_of_area(self) -> int:
@@ -17,6 +26,8 @@ class DetectionResult:
 
 
 class DetectionResultsDecoder(JSONDecoder):
+    """Class for decoding JSON given by API"""
+
     def __init__(self):
         JSONDecoder.__init__(self, object_hook=self.dict_to_list)
 

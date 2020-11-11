@@ -22,6 +22,7 @@ minio_client = Minio(
 
 bucket_name = "image-proccessing-api"
 
+
 try:
     minio_client.make_bucket(bucket_name)
 except BucketAlreadyOwnedByYou:

@@ -11,6 +11,7 @@ services:
             - ../results:/src/results
             - ../upload:/src/upload
             - ../code:/src/code
+            - ../docs:/src/docs
         environment:
             # https://stackoverflow.com/a/51362214
             - PYTHONUNBUFFERED=1
