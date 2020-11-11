@@ -4,7 +4,6 @@ import logging as log
 from typing import List, Tuple
 from models.image import Image
 
-from models.detection_result import DetectionResult, DetectionResultsDecoder
 from services.image_processing_service import ImageProcessingService
 from utils.exceptions import (
     PotentialObjectNotFoundException,
@@ -13,6 +12,12 @@ from utils.exceptions import (
     CharactersCouldNotBeRecognizedByOCR,
 )
 from models.ocr_result import OcrResult
+from models.detection_result import (
+    DetectionResult,
+    DetectionResultsDecoder,
+    Box,
+)
+
 
 # API for object detection (it runs TF Hub's model)
 predict_api_address_env = os.environ.get("PREDICT_API")
@@ -34,14 +39,21 @@ log.info("OCR server address: %s", ocr_server_host)
 
 
 class InferenceService:
-    _bottom_of_car_box: List[float] = [0.25, 0.0, 1.0, 1.0]
-    _car_class_entity: str = "Car"
+    """Service responsible for obtaining license plate number
+
+    It is done by making requests to other APIs/modules (predict-api,
+    ocr-server) and performing some operations like cropping an image.
+    """
+
+    _bottom_of_car_box: Box = [0.25, 0.0, 1.0, 1.0]
+    _vehicle_class_entities: List[str] = ["Car", "Bus"]
     _license_plate_class_entity: str = "Vehicle registration plate"
 
     def send_image_to_detector(self, image: Image) -> List[DetectionResult]:
         """Sends image to predict api, which returns JSON with predictions about objects in that image.
         Before sending image, it needs to be encoded in base64.
         """
+
         image_base64 = image.to_base64()
 
         response = requests.post(
@@ -54,6 +66,8 @@ class InferenceService:
         return results
 
     def send_image_to_ocr(self, image: Image) -> OcrResult:
+        """Sends image to ocr-server"""
+
         image_base64 = image.to_base64()
 
         response = requests.post(
@@ -100,10 +114,10 @@ class InferenceService:
 
         return results[index]
 
-    def get_results_and_cropped_image_for_potential_object_of_class_entity(
+    def get_results_and_cropped_image_for_potential_object_of_class_entities(
         self,
         image: Image,
-        class_entity: str,
+        class_entities: List[str],
         area_threshold: int = 20,
         score_threshold: float = 0.2,
     ) -> Tuple[List[DetectionResult], DetectionResult, Image]:
@@ -118,7 +132,7 @@ class InferenceService:
         result = self.send_image_to_detector(image)
         result_filtered_by_class_entity = list(
             filter(
-                lambda r: r.class_entity == class_entity,
+                lambda r: r.class_entity in class_entities,
                 result,
             )
         )
@@ -159,9 +173,9 @@ class InferenceService:
                 first_result,
                 potential_car,
                 cropped_car,
-            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
+            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entities(
                 image,
-                self._car_class_entity,
+                self._vehicle_class_entities,
                 area_threshold=0,
                 score_threshold=0.0,
             )
@@ -197,9 +211,9 @@ class InferenceService:
                 second_result,
                 potential_license_plate,
                 cropped_license_plate,
-            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entity(
+            ) = self.get_results_and_cropped_image_for_potential_object_of_class_entities(
                 image_with_bottom_of_car,
-                self._license_plate_class_entity,
+                [self._license_plate_class_entity],
                 area_threshold=0,
                 score_threshold=0.0,
             )
