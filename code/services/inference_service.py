@@ -46,7 +46,7 @@ class InferenceService:
     """
 
     _bottom_of_car_box: Box = [0.25, 0.0, 1.0, 1.0]
-    _vehicle_class_entities: List[str] = ["Car", "Bus"]
+    _vehicle_class_entities: List[str] = ["Car", "Bus", "Truck"]
     _license_plate_class_entity: str = "Vehicle registration plate"
 
     def send_image_to_detector(self, image: Image) -> List[DetectionResult]:
@@ -176,7 +176,7 @@ class InferenceService:
             ) = self.get_results_and_cropped_image_for_potential_object_of_class_entities(
                 image,
                 self._vehicle_class_entities,
-                area_threshold=0,
+                area_threshold=10,
                 score_threshold=0.0,
             )
         except PotentialObjectNotFoundException as e:
