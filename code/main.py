@@ -36,14 +36,14 @@ class Base64Body(BaseModel):
     b64Encoded: str = Field(..., title="Image encoded in Base64")
 
 
-def get_lp_number(image: Image, inference_service: InferenceService) -> str:
+def get_lp_number(image: Image, inference_service: InferenceService) -> dict:
     """Tries to get license plate number for given image
 
     Returns:
         str: license plate number
     """
     try:
-        lp = inference_service.get_license_plate_number(image)
+        dict_with_results = inference_service.get_license_plate_number(image)
     except CarNotFoundException:
         raise HTTPException(
             status_code=422,
@@ -60,7 +60,7 @@ def get_lp_number(image: Image, inference_service: InferenceService) -> str:
             detail="Could not recognize characters in the sent image",
         )
 
-    return lp
+    return dict_with_results
 
 
 @app.post("/upload/url")

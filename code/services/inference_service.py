@@ -17,6 +17,7 @@ from models.detection_result import (
     DetectionResultsDecoder,
     Box,
 )
+from models.number_check_result import NumberCheckResultDecoder, NumberCheckResult
 
 
 # API for object detection (it runs TF Hub's model)
@@ -33,9 +34,16 @@ ocr_server_host = (
     ocr_server_address_env if ocr_server_address_env is not None else "ocr:5000"
 )
 
+# users API for checking license plate number
+users_api_address_env = os.environ.get("OCR_SERVER")
+users_api_host = (
+    users_api_address_env if users_api_address_env is not None else "usersApi:3000"
+)
+
 log.basicConfig(level=log.DEBUG, format="%(asctime)s - %(message)s")
 log.info("Predict API address: %s", predict_api_host)
 log.info("OCR server address: %s", ocr_server_host)
+log.info("Users API address: %s", users_api_host)
 
 
 class InferenceService:
@@ -60,8 +68,10 @@ class InferenceService:
             f"http://{predict_api_host}/predict",
             json={"imgBase64": image_base64},
         )
-
         results = DetectionResultsDecoder().decode(response.text)
+
+        log.debug("detector result")
+        log.debug(results)
 
         return results
 
@@ -80,6 +90,19 @@ class InferenceService:
             raise CharactersCouldNotBeRecognizedByOCR
 
         return OcrResult.from_json(response.json())
+
+    def send_number_to_users_api(self, number: str):
+        response = requests.get(
+            f"http://{users_api_host}/lp/{number}", json={"strict": False}
+        )
+
+        result = NumberCheckResultDecoder().decode(response.text)
+
+        # don't know why but result is 2D array, but should be 1D array
+        # so return first element
+        if len(result) > 0:
+            return result[0]
+        return []
 
     def find_potential_object(
         self,
@@ -248,4 +271,11 @@ class InferenceService:
 
         ocr_result.image_links.update(**image_links)
 
-        return ocr_result
+        matchingNumbers = self.send_number_to_users_api(ocr_result.license_plate_number)
+        log.debug(matchingNumbers)
+
+        return {
+            "license_plate_number": ocr_result.license_plate_number,
+            "matchingNumbers": matchingNumbers,
+            "image_links": {**ocr_result.image_links},
+        }
