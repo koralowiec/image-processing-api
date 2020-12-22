@@ -1,52 +1,112 @@
 version: '2.4'
 services:
-    server:
-        build:
-            context: ../
-            dockerfile: ./docker/Dockerfile
-            target: dev
-        ports: 
-            - "5000:5000"
-        volumes:
-            - ../results:/src/results
-            - ../upload:/src/upload
-            - ../code:/src/code
-            - ../docs:/src/docs
-        environment:
-            # https://stackoverflow.com/a/51362214
-            - PYTHONUNBUFFERED=1
-            - DEBUG=true
-            - MODULE
-        env_file: 
-            - ../.minio.env
-        depends_on: 
-            minio:
-                condition: service_healthy
-    ocr:
-        image: ghcr.io/koralowiec/ocr-server:latest
-        ports: 
-            - "5001:5000"
-        environment:
-            - PYTHONUNBUFFERED=1
-        env_file: 
-            - ../.minio.env
-        depends_on: 
-            minio:
-                condition: service_healthy
-    predict-api:
-        image: ghcr.io/koralowiec/predict-api:cpu
-        ports: 
-            - "5002:5000"
-        volumes:
-            - ../../predict-api/modules/openimages_v4__ssd__mobilenet_v2:/model_ssd
-            - ../../predict-api/modules/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn
-    minio:
-        image: minio/minio
-        ports: 
-            - 9000:9000
-        env_file: 
-            - ../.minio.env
-        command: server /data
-        healthcheck:
-            test: curl -f http://localhost:9000/minio/health/live || exit 1
-            interval: 5s
+  server:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+      target: dev
+    ports: 
+      - "5000:5000"
+    volumes:
+      - ../results:/src/results
+      - ../upload:/src/upload
+      - ../code:/src/code
+      - ../docs:/src/docs
+    environment:
+      # https://stackoverflow.com/a/51362214
+      - PYTHONUNBUFFERED=1
+      - DEBUG=true
+      - MODULE
+    env_file: 
+      - ../.minio.env
+    depends_on: 
+      minio:
+        condition: service_healthy
+    networks:
+      - apis
+  ocr:
+    image: ghcr.io/koralowiec/ocr-server:latest
+    ports: 
+      - "5001:5000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file: 
+      - ../.minio.env
+    depends_on: 
+      minio:
+        condition: service_healthy
+    networks:
+      - apis
+  predict-api:
+    image: ghcr.io/koralowiec/predict-api:cpu
+    ports: 
+      - "5002:5000"
+    volumes:
+      - ../../predict-api/modules/openimages_v4__ssd__mobilenet_v2:/model_ssd
+      - ../../predict-api/modules/faster_rcnn_openimages_v4_inception_resnet_v2:/model_faster_rcnn
+    networks:
+      - apis
+  minio:
+    image: minio/minio
+    ports: 
+      - 9000:9000
+    env_file: 
+      - ../.minio.env
+    command: server /data
+    healthcheck:
+      test: curl -f http://localhost:9000/minio/health/live || exit 1
+      interval: 5s
+    networks:
+      - apis
+
+  usersApi:
+    image: koralowiec/users-api:latest
+    command: >
+        /bin/ash -c "npm run seed:run
+        && node dist/main"
+    env_file: ../.env
+    ports:
+      - 3000:3000
+    depends_on:
+      db:
+        condition:
+          service_healthy
+    networks:
+      - database
+      - apis
+  db:
+    image: postgres:13.1
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - database
+  pgAdmin:
+    image: dpage/pgadmin4
+    ports:
+      - "5433:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL
+      - PGADMIN_DEFAULT_PASSWORD
+    volumes:
+      - pgadminconfig:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition:
+          service_healthy
+    networks:
+      - database
+
+volumes:
+  pgadminconfig:
+    external: true
+
+networks:
+  database:
+  apis:
