@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, File, HTTPException
+from fastapi import FastAPI, Depends, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -76,10 +76,11 @@ def url_image(
 
 
 @app.post("/upload/raw")
-def raw_image(
-    image: bytes = File(...),
+async def raw_image(
+    request: Request,
     inference_service: InferenceService = Depends(),
 ):
+    image = await request.body()
     image = Image.from_raw(image)
     image.save(directory="upload")
 

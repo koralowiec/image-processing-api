@@ -35,7 +35,7 @@ ocr_server_host = (
 )
 
 # users API for checking license plate number
-users_api_address_env = os.environ.get("OCR_SERVER")
+users_api_address_env = os.environ.get("USERS_API")
 users_api_host = (
     users_api_address_env if users_api_address_env is not None else "usersApi:3000"
 )
