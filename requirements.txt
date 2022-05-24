@@ -5,7 +5,7 @@ numpy==1.18.1
 six==1.14.0
 pdoc3==0.9.1
 python-multipart==0.0.5
-tensorflow==2.2.1
+tensorflow==2.6.4
 tensorflow-hub==0.7.0
 tensorflow-addons==0.10.0
 tensorflow-io==0.14.0
